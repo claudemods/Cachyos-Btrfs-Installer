@@ -107,3 +107,10 @@ chmod +x *.sh
   <p>For issues or feature requests, please open an issue on GitHub.</p>
   <p>Special thanks to the CachyOS team for their optimized packages and kernels.</p>
 </div>
+
+
+<div align="center">
+  <h2>📦 Pre-built Image</h2>
+  <p>2300MB minimal .img.xz with installer included</p>
+  <p><a href="https://drive.google.com/drive/folders/1_Sqm5hltbQ5CPx9E6hyA7NkfgWblFUm_">Download Installer Image</a></p>
+</div>
