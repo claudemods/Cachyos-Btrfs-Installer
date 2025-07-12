@@ -25,7 +25,7 @@ show_ascii() {
 ██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗
 ╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝
 ░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░${NC}"
-    echo -e "${CYAN}CachyOS Btrfs Installer v1.01 12-07-25${NC}"
+    echo -e "${CYAN}CachyOS Btrfs Installer v1.0${NC}"
     echo
 }
 
@@ -328,57 +328,79 @@ case "$DESKTOP_ENV" in
     "KDE Plasma")
         pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout
         systemctl enable sddm
-        pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "GNOME")
         pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout
         systemctl enable gdm
-        pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "XFCE")
         pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "MATE")
         pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "LXQt")
         pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout
         systemctl enable sddm
-        pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Cinnamon")
         pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Budgie")
         pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Deepin")
         pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "i3")
         pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Sway")
         pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox foot pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Hyprland")
         pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacstrap -i /mnt firefox kitty pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout
+        dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40
+        [ \$? -eq 0 ] && pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
         
         # Create Hyprland config directory
         mkdir -p /home/$USER_NAME/.config/hypr
@@ -608,7 +630,7 @@ configure_installation() {
 
 main_menu() {
     while true; do
-        choice=$(dialog --clear --title "CachyOS Btrfs Installer v1.01" \
+        choice=$(dialog --clear --title "CachyOS Btrfs Installer v1.0" \
                        --menu "Select option:" 15 45 6 \
                        1 "Configure Installation" \
                        2 "Find Fastest Mirrors" \
