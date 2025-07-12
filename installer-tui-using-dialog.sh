@@ -13,6 +13,11 @@ RED='\033[38;2;255;0;0m'
 CYAN='\033[38;2;0;255;255m'
 NC='\033[0m'
 
+execute_command() {
+    echo -e "${CYAN}Executing: $@${NC}"
+    "$@" | while IFS= read -r line; do echo -e "${CYAN}$line${NC}"; done
+}
+
 show_ascii() {
     clear
     echo -e "${RED}░█████╗░██╗░░░░░░█████╗░██╗░░░██╗██████╗░██╗░░░██╗░█████╗░░██████╗
@@ -25,10 +30,6 @@ show_ascii() {
     echo
 }
 
-cyan_output() {
-    "$@" | while IFS= read -r line; do echo -e "${CYAN}$line${NC}"; done
-}
-
 configure_fastest_mirrors() {
     show_ascii
     dialog --title "Fastest Mirrors" --yesno "Would you like to find and use the fastest mirrors?" 7 50
@@ -36,8 +37,8 @@ configure_fastest_mirrors() {
     case $response in
         0) 
             echo -e "${CYAN}Finding fastest mirrors...${NC}"
-            pacman -Sy --noconfirm reflector >/dev/null 2>&1
-            reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
+            execute_command pacman -Sy --noconfirm reflector
+            execute_command reflector --latest 20 --protocol https --sort rate --save /etc/pacman.d/mirrorlist
             echo -e "${CYAN}Mirrorlist updated with fastest mirrors${NC}"
             ;;
         1) 
@@ -81,42 +82,55 @@ perform_installation() {
     fi
 
     # Partitioning
-    cyan_output parted -s "$TARGET_DISK" mklabel gpt
-    cyan_output parted -s "$TARGET_DISK" mkpart primary 1MiB 513MiB
-    cyan_output parted -s "$TARGET_DISK" set 1 esp on
-    cyan_output parted -s "$TARGET_DISK" mkpart primary 513MiB 100%
+    execute_command parted -s "$TARGET_DISK" mklabel gpt
+    execute_command parted -s "$TARGET_DISK" mkpart primary 1MiB 513MiB
+    execute_command parted -s "$TARGET_DISK" set 1 esp on
+    execute_command parted -s "$TARGET_DISK" mkpart primary 513MiB 100%
 
     # Formatting
-    cyan_output mkfs.vfat -F32 "${TARGET_DISK}1"
-    cyan_output mkfs.btrfs -f "${TARGET_DISK}2"
+    execute_command mkfs.vfat -F32 "${TARGET_DISK}1"
+    execute_command mkfs.btrfs -f "${TARGET_DISK}2"
 
     # Mounting and subvolumes
-    cyan_output mount "${TARGET_DISK}2" /mnt
-    cyan_output btrfs subvolume create /mnt/@
-    cyan_output btrfs subvolume create /mnt/@home
-    cyan_output btrfs subvolume create /mnt/@root
-    cyan_output btrfs subvolume create /mnt/@srv
-    cyan_output btrfs subvolume create /mnt/@tmp
-    cyan_output btrfs subvolume create /mnt/@log
-    cyan_output btrfs subvolume create /mnt/@cache
-    cyan_output umount /mnt
+    execute_command mount "${TARGET_DISK}2" /mnt
+    
+    # Create subvolumes with requested structure
+    execute_command btrfs subvolume create /mnt/@
+    execute_command btrfs subvolume create /mnt/@home
+    execute_command btrfs subvolume create /mnt/@root
+    execute_command btrfs subvolume create /mnt/@srv
+    execute_command btrfs subvolume create /mnt/@cache
+    execute_command btrfs subvolume create /mnt/@tmp
+    execute_command btrfs subvolume create /mnt/@log
+    execute_command mkdir -p /mnt/@/var/lib
+    execute_command btrfs subvolume create /mnt/@/var/lib/portables
+    execute_command btrfs subvolume create /mnt/@/var/lib/machines
+    
+    execute_command umount /mnt
 
     # Remount with compression
-    cyan_output mount -o subvol=@,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt
-    cyan_output mkdir -p /mnt/boot/efi
-    cyan_output mount "${TARGET_DISK}1" /mnt/boot/efi
-    cyan_output mkdir -p /mnt/home
-    cyan_output mkdir -p /mnt/root
-    cyan_output mkdir -p /mnt/srv
-    cyan_output mkdir -p /mnt/tmp
-    cyan_output mkdir -p /mnt/var/cache
-    cyan_output mkdir -p /mnt/var/log
-    cyan_output mount -o subvol=@home,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/home
-    cyan_output mount -o subvol=@root,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/root
-    cyan_output mount -o subvol=@srv,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/srv
-    cyan_output mount -o subvol=@tmp,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/tmp
-    cyan_output mount -o subvol=@log,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/log
-    cyan_output mount -o subvol=@cache,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/cache
+    execute_command mount -o subvol=@,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt
+    execute_command mkdir -p /mnt/boot/efi
+    execute_command mount "${TARGET_DISK}1" /mnt/boot/efi
+    
+    # Create mount points and mount subvolumes
+    execute_command mkdir -p /mnt/home
+    execute_command mkdir -p /mnt/root
+    execute_command mkdir -p /mnt/srv
+    execute_command mkdir -p /mnt/tmp
+    execute_command mkdir -p /mnt/var/cache
+    execute_command mkdir -p /mnt/var/log
+    execute_command mkdir -p /mnt/var/lib/portables
+    execute_command mkdir -p /mnt/var/lib/machines
+    
+    execute_command mount -o subvol=@home,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/home
+    execute_command mount -o subvol=@root,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/root
+    execute_command mount -o subvol=@srv,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/srv
+    execute_command mount -o subvol=@tmp,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/tmp
+    execute_command mount -o subvol=@cache,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/cache
+    execute_command mount -o subvol=@log,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/log
+    execute_command mount -o subvol=@/var/lib/portables,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/lib/portables
+    execute_command mount -o subvol=@/var/lib/machines,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/lib/machines
 
     # Determine kernel package based on selection
     case "$KERNEL_TYPE" in
@@ -161,7 +175,7 @@ perform_installation() {
         BASE_PKGS="$BASE_PKGS networkmanager"
     fi
 
-    cyan_output pacstrap -i /mnt $BASE_PKGS --noconfirm --disable-download-timeout
+    execute_command pacstrap -i /mnt $BASE_PKGS --noconfirm --disable-download-timeout
 
     # Add selected repositories
     for repo in "${REPOS[@]}"; do
@@ -225,6 +239,8 @@ perform_installation() {
         echo "UUID=$ROOT_UUID /var/cache     btrfs   rw,noatime,compress=zstd:$COMPRESSION_LEVEL,discard=async,space_cache=v2,subvol=/@cache 0 0"
         echo "UUID=$ROOT_UUID /var/tmp       btrfs   rw,noatime,compress=zstd:$COMPRESSION_LEVEL,discard=async,space_cache=v2,subvol=/@tmp 0 0"
         echo "UUID=$ROOT_UUID /var/log       btrfs   rw,noatime,compress=zstd:$COMPRESSION_LEVEL,discard=async,space_cache=v2,subvol=/@log 0 0"
+        echo "UUID=$ROOT_UUID /var/lib/portables btrfs rw,noatime,compress=zstd:$COMPRESSION_LEVEL,discard=async,space_cache=v2,subvol=/@/var/lib/portables 0 0"
+        echo "UUID=$ROOT_UUID /var/lib/machines btrfs rw,noatime,compress=zstd:$COMPRESSION_LEVEL,discard=async,space_cache=v2,subvol=/@/var/lib/machines 0 0"
     } >> /mnt/etc/fstab
 
     # Chroot setup
@@ -311,59 +327,59 @@ pacman -Sy
 # Install desktop environment and related packages only if selected
 case "$DESKTOP_ENV" in
     "KDE Plasma")
-        pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout
+        pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings
         systemctl enable sddm
-        pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox dolphin konsole pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "GNOME")
-        pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout
+        pacman -S --noconfirm gnome gnome-extra gdm
         systemctl enable gdm
-        pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "XFCE")
-        pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+        pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter
         systemctl enable lightdm
-        pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox mousepad xfce4-terminal pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "MATE")
-        pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+        pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter
         systemctl enable lightdm
-        pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox pluma mate-terminal pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "LXQt")
-        pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout
+        pacman -S --noconfirm lxqt breeze-icons sddm
         systemctl enable sddm
-        pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox qterminal pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "Cinnamon")
-        pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+        pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter
         systemctl enable lightdm
-        pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox xed gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "Budgie")
-        pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+        pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter
         systemctl enable lightdm
-        pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "Deepin")
-        pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout
+        pacman -S --noconfirm deepin deepin-extra lightdm
         systemctl enable lightdm
-        pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox deepin-terminal pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "i3")
-        pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+        pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter
         systemctl enable lightdm
-        pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox alacritty pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "Sway")
-        pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+        pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter
         systemctl enable lightdm
-        pacstrap -i /mnt firefox foot pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox foot pulseaudio pavucontrol cachyos-gaming-meta
         ;;
     "Hyprland")
-        pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+        pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter
         systemctl enable lightdm
-        pacstrap -i /mnt firefox kitty pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
+        pacman -S --noconfirm firefox kitty pulseaudio pavucontrol cachyos-gaming-meta
         
         # Create Hyprland config directory
         mkdir -p /home/$USER_NAME/.config/hypr
