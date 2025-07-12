@@ -88,7 +88,7 @@ public slots:
 
         QString fullCommand;
         if (asRoot) {
-            fullCommand = "sudo " + command;
+            fullCommand = "sudo -S " + command;
             if (!args.isEmpty()) {
                 fullCommand += " " + args.join(" ");
             }
@@ -103,7 +103,7 @@ public slots:
 
         if (asRoot) {
             QStringList fullArgs;
-            fullArgs << command;
+            fullArgs << "-S" << command;
             fullArgs += args;
             
             process.start("sudo", fullArgs);
@@ -176,7 +176,7 @@ public:
         QWidget *centralWidget = new QWidget;
         QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
 
-        // ASCII art title - EXACTLY as you provided
+        // ASCII art title
         QLabel *titleLabel = new QLabel;
         titleLabel->setText(
             "<span style='color:#ff0000;'>░█████╗░██╗░░░░░░█████╗░██╗░░░██╗██████╗░███████╗███╗░░░███╗░█████╗░██████╗░░██████╗<br>"
@@ -986,7 +986,7 @@ private slots:
         layout->addWidget(exitButton);
 
         connect(rebootButton, &QPushButton::clicked, [this, &dialog]() {
-            QProcess::execute("reboot", QStringList());
+            QProcess::execute("sudo", QStringList() << "-S" << "reboot");
             dialog.accept();
         });
 
@@ -1028,7 +1028,9 @@ private slots:
 
     QString getDiskUuid(const QString &disk) {
         QProcess process;
-        process.start("blkid", {"-s", "UUID", "-o", "value", disk});
+        process.start("sudo", QStringList() << "-S" << "blkid" << "-s" << "UUID" << "-o" << "value" << disk);
+        process.write((commandRunner->password() + "\n").toUtf8());
+        process.closeWriteChannel();
         process.waitForFinished();
         return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
     }
