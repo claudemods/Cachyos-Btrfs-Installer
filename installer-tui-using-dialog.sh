@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # CachyOS UEFI-only BTRFS Installation with Multiple Desktop Options
 set -e
 
@@ -20,12 +19,12 @@ execute_command() {
 
 show_ascii() {
     clear
-    echo -e "${RED}░█████╗░██╗░░░░░░█████╗░██╗░░░██╗██████╗░██╗░░░██╗░█████╗░░██████╗
-██╔══██╗██║░░░░░██╔══██╗██║░░░██║██╔══██╗██║░░░██║██╔══██╗██╔════╝
-██║░░╚═╝██║░░░░░██║░░██║██║░░░██║██████╦╝╚██╗░██╔╝██║░░██║╚█████╗░
-██║░░██╗██║░░░░░██║░░██║██║░░░██║██╔══██╗░╚████╔╝░██║░░██║░╚═══██╗
-╚█████╔╝███████╗╚█████╔╝╚██████╔╝██████╦╝░░╚██╔╝░░╚█████╔╝██████╔╝
-░╚════╝░╚══════╝░╚════╝░░╚═════╝░╚═════╝░░░░╚═╝░░░░╚════╝░╚═════╝░${NC}"
+    echo -e "${RED}░█████╗░██╗░░░░░░█████╗░██╗░░░██╗██████╗░███████╗███╗░░░███╗░█████╗░██████╗░░██████╗
+██╔══██╗██║░░░░░██╔══██╗██║░░░██║██╔══██╗██╔════╝████╗░████║██╔══██╗██╔══██╗██╔════╝
+██║░░╚═╝██║░░░░░███████║██║░░░██║██║░░██║█████╗░░██╔████╔██║██║░░██║██║░░██║╚█████╗░
+██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗
+╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝
+░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░${NC}"
     echo -e "${CYAN}CachyOS Btrfs Installer v1.0${NC}"
     echo
 }
@@ -94,7 +93,7 @@ perform_installation() {
     # Mounting and subvolumes
     execute_command mount "${TARGET_DISK}2" /mnt
     
-    # Create subvolumes with requested structure
+    # Create subvolumes
     execute_command btrfs subvolume create /mnt/@
     execute_command btrfs subvolume create /mnt/@home
     execute_command btrfs subvolume create /mnt/@root
@@ -113,7 +112,7 @@ perform_installation() {
     execute_command mkdir -p /mnt/boot/efi
     execute_command mount "${TARGET_DISK}1" /mnt/boot/efi
     
-    # Create mount points and mount subvolumes
+    # Create mount points
     execute_command mkdir -p /mnt/home
     execute_command mkdir -p /mnt/root
     execute_command mkdir -p /mnt/srv
@@ -132,7 +131,7 @@ perform_installation() {
     execute_command mount -o subvol=@/var/lib/portables,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/lib/portables
     execute_command mount -o subvol=@/var/lib/machines,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/lib/machines
 
-    # Determine kernel package based on selection
+    # Determine kernel package
     case "$KERNEL_TYPE" in
         "Bore") KERNEL_PKG="linux-cachyos-bore" ;;
         "Bore-Extra") KERNEL_PKG="linux-cachyos-bore-extra" ;;
@@ -142,7 +141,7 @@ perform_installation() {
         "Zen") KERNEL_PKG="linux-zen" ;;
     esac
 
-    # Base packages based on initramfs and bootloader selection
+    # Base packages using pacstrap
     BASE_PKGS="base $KERNEL_PKG linux-firmware btrfs-progs nano"
     
     # Add bootloader packages
@@ -170,7 +169,7 @@ perform_installation() {
             ;;
     esac
     
-    # Only add network manager if no desktop selected (for minimal install)
+    # Add network manager if no desktop selected
     if [ "$DESKTOP_ENV" = "None" ]; then
         BASE_PKGS="$BASE_PKGS networkmanager"
     fi
@@ -219,7 +218,7 @@ perform_installation() {
         esac
     done
 
-    # Import CachyOS key if any CachyOS repo is enabled
+    # Import CachyOS key if needed
     if [[ " ${REPOS[@]} " =~ "cachyos" ]] || [[ " ${REPOS[@]} " =~ "cachyos-v3" ]] || [[ " ${REPOS[@]} " =~ "cachyos-testing" ]]; then
         echo -e "${CYAN}Importing CachyOS key...${NC}"
         arch-chroot /mnt bash -c "pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com"
@@ -324,62 +323,62 @@ fi
 # Update package database with new repos
 pacman -Sy
 
-# Install desktop environment and related packages only if selected
+# Install desktop environment and related packages using pacstrap
 case "$DESKTOP_ENV" in
     "KDE Plasma")
-        pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings
+        pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout
         systemctl enable sddm
-        pacman -S --noconfirm firefox dolphin konsole pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "GNOME")
-        pacman -S --noconfirm gnome gnome-extra gdm
+        pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout
         systemctl enable gdm
-        pacman -S --noconfirm firefox gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "XFCE")
-        pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter
+        pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox mousepad xfce4-terminal pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "MATE")
-        pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter
+        pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox pluma mate-terminal pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "LXQt")
-        pacman -S --noconfirm lxqt breeze-icons sddm
+        pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout
         systemctl enable sddm
-        pacman -S --noconfirm firefox qterminal pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Cinnamon")
-        pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter
+        pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox xed gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Budgie")
-        pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter
+        pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Deepin")
-        pacman -S --noconfirm deepin deepin-extra lightdm
+        pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox deepin-terminal pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "i3")
-        pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter
+        pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox alacritty pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Sway")
-        pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter
+        pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox foot pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox foot pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         ;;
     "Hyprland")
-        pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter
+        pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
         systemctl enable lightdm
-        pacman -S --noconfirm firefox kitty pulseaudio pavucontrol cachyos-gaming-meta
+        pacstrap -i /mnt firefox kitty pulseaudio pavucontrol cachyos-gaming-meta --noconfirm --disable-download-timeout
         
         # Create Hyprland config directory
         mkdir -p /home/$USER_NAME/.config/hypr
@@ -521,7 +520,7 @@ configure_installation() {
         "LTS" "Long-term support kernel" \
         "Zen" "Zen kernel (optimized for desktop)" 3>&1 1>&2 2>&3)
     
-    # Initramfs selection with all options
+    # Initramfs selection
     INITRAMFS=$(dialog --title "Initramfs Selection" --menu "Select initramfs generator:" 15 40 4 \
         "mkinitcpio" "Default Arch Linux initramfs" \
         "dracut" "Alternative initramfs generator" \
