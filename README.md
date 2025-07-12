@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://i.postimg.cc/8CH1qgKV/cachyos.png" width="300">
+  <img src="https://i.postimg.cc/8CH1qgKV/cachyos.png">
 </p>
 
 <div align="center">
