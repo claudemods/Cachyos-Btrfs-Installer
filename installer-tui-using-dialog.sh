@@ -21,7 +21,7 @@ show_ascii() {
 ██║░░██╗██║░░░░░██║░░██║██║░░░██║██╔══██╗░╚████╔╝░██║░░██║░╚═══██╗
 ╚█████╔╝███████╗╚█████╔╝╚██████╔╝██████╦╝░░╚██╔╝░░╚█████╔╝██████╔╝
 ░╚════╝░╚══════╝░╚════╝░░╚═════╝░╚═════╝░░░░╚═╝░░░░╚════╝░╚═════╝░${NC}"
-    echo -e "${CYAN}CachyOS Btrfs Installer v1.0 12-07-2025${NC}"
+    echo -e "${CYAN}CachyOS Btrfs Installer v1.0${NC}"
     echo
 }
 
@@ -41,10 +41,10 @@ configure_fastest_mirrors() {
             echo -e "${CYAN}Mirrorlist updated with fastest mirrors${NC}"
             ;;
         1) 
-            echo -e "${CYAN}Using default mirrors${NC}"
+            echo -e "${CYAN}Using current mirrors${NC}"
             ;;
         255) 
-            echo -e "${CYAN}Using default mirrors${NC}"
+            echo -e "${CYAN}Mirror selection cancelled${NC}"
             ;;
     esac
 }
@@ -140,9 +140,21 @@ perform_installation() {
         "rEFInd") BASE_PKGS="$BASE_PKGS refind" ;;
     esac
     
-    if [ "$INITRAMFS" = "dracut" ]; then
-        BASE_PKGS="$BASE_PKGS dracut"
-    fi
+    # Add initramfs packages
+    case "$INITRAMFS" in
+        "mkinitcpio") 
+            BASE_PKGS="$BASE_PKGS mkinitcpio"
+            ;;
+        "dracut") 
+            BASE_PKGS="$BASE_PKGS dracut"
+            ;;
+        "booster")
+            BASE_PKGS="$BASE_PKGS booster"
+            ;;
+        "mkinitcpio-pico")
+            BASE_PKGS="$BASE_PKGS mkinitcpio-pico"
+            ;;
+    esac
     
     # Only add network manager if no desktop selected (for minimal install)
     if [ "$DESKTOP_ENV" = "None" ]; then
@@ -279,6 +291,12 @@ case "$INITRAMFS" in
         ;;
     "dracut")
         dracut --regenerate-all --force
+        ;;
+    "booster")
+        booster generate
+        ;;
+    "mkinitcpio-pico")
+        mkinitcpio -P
         ;;
 esac
 
@@ -487,10 +505,12 @@ configure_installation() {
         "LTS" "Long-term support kernel" \
         "Zen" "Zen kernel (optimized for desktop)" 3>&1 1>&2 2>&3)
     
-    # Initramfs selection
-    INITRAMFS=$(dialog --title "Initramfs Selection" --menu "Select initramfs generator:" 12 40 2 \
+    # Initramfs selection with all options
+    INITRAMFS=$(dialog --title "Initramfs Selection" --menu "Select initramfs generator:" 15 40 4 \
         "mkinitcpio" "Default Arch Linux initramfs" \
-        "dracut" "Alternative initramfs generator" 3>&1 1>&2 2>&3)
+        "dracut" "Alternative initramfs generator" \
+        "booster" "Fast initramfs generator written in Go" \
+        "mkinitcpio-pico" "Minimal mkinitcpio variant" 3>&1 1>&2 2>&3)
     
     # Bootloader selection
     BOOTLOADER=$(dialog --title "Bootloader Selection" --menu "Select bootloader:" 15 40 3 \
@@ -562,18 +582,18 @@ configure_installation() {
         "Sway" "Sway Wayland Compositor" \
         "Hyprland" "Hyprland Wayland Compositor" \
         "None" "No desktop environment (minimal install)" 3>&1 1>&2 2>&3)
-    COMPRESSION_LEVEL=$(dialog --title "Compression Level" --inputbox "Enter BTRFS compression level (0-22, default is 3):" 8 40 3 3>&1 1>&2 2>&3)
+    COMPRESSION_LEVEL=$(dialog --title "Compression Level" --inputbox "Enter BTRFS compression level (0-22):" 8 40 3>&1 1>&2 2>&3)
     
     # Validate compression level
     if ! [[ "$COMPRESSION_LEVEL" =~ ^[0-9]+$ ]] || [ "$COMPRESSION_LEVEL" -lt 0 ] || [ "$COMPRESSION_LEVEL" -gt 22 ]; then
-        dialog --msgbox "Invalid compression level. Using default (3)." 6 40
-        COMPRESSION_LEVEL=3
+        dialog --msgbox "Invalid compression level. Must be between 0-22." 6 40
+        exit 1
     fi
 }
 
 main_menu() {
     while true; do
-        choice=$(dialog --clear --title "CachyOS Btrfs Installer v1.0 12-07-2025" \
+        choice=$(dialog --clear --title "CachyOS Btrfs Installer v1.0" \
                        --menu "Select option:" 15 45 6 \
                        1 "Configure Installation" \
                        2 "Find Fastest Mirrors" \
