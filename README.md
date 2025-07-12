@@ -118,6 +118,6 @@ chmod +x *.sh
 
 <div align="center">
   <h2>📦 Pre-built Image</h2>
-  <p>2300MB minimal v1.0 .img.xz with installer included (currently missing deps)</p>
+  <p>2300MB minimal v1.0 .img.xz with installer included (currently missing dependencies)</p>
   <p><a href="https://drive.google.com/drive/folders/1_Sqm5hltbQ5CPx9E6hyA7NkfgWblFUm_">Download Installer Image</a></p>
 </div>
