@@ -119,8 +119,7 @@ perform_installation() {
     execute_command mkdir -p /mnt/tmp
     execute_command mkdir -p /mnt/var/cache
     execute_command mkdir -p /mnt/var/log
-    execute_command mkdir -p /mnt/var/lib/portables
-    execute_command mkdir -p /mnt/var/lib/machines
+    
     
     execute_command mount -o subvol=@home,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/home
     execute_command mount -o subvol=@root,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/root
@@ -128,9 +127,7 @@ perform_installation() {
     execute_command mount -o subvol=@tmp,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/tmp
     execute_command mount -o subvol=@cache,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/cache
     execute_command mount -o subvol=@log,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/log
-    execute_command mount -o subvol=@/var/lib/portables,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/lib/portables
-    execute_command mount -o subvol=@/var/lib/machines,compress=zstd:$COMPRESSION_LEVEL,compress-force=zstd:$COMPRESSION_LEVEL "${TARGET_DISK}2" /mnt/var/lib/machines
-
+   
     # Determine kernel package
     case "$KERNEL_TYPE" in
         "Bore") KERNEL_PKG="linux-cachyos-bore" ;;
