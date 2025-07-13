@@ -101,10 +101,6 @@ perform_installation() {
     execute_command btrfs subvolume create /mnt/@cache
     execute_command btrfs subvolume create /mnt/@tmp
     execute_command btrfs subvolume create /mnt/@log
-    execute_command mkdir -p /mnt/@/var/lib
-    execute_command btrfs subvolume create /mnt/@/var/lib/portables
-    execute_command btrfs subvolume create /mnt/@/var/lib/machines
-    
     execute_command umount /mnt
 
     # Remount with compression
