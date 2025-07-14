@@ -1,445 +1,1083 @@
-#include <iostream>
-#include <string>
-#include <vector>
-#include <cstdlib>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <fstream>
-#include <sstream>
+#include <QApplication>
+#include <QMainWindow>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QProgressBar>
+#include <QTextEdit>
+#include <QMessageBox>
+#include <QInputDialog>
+#include <QComboBox>
+#include <QLineEdit>
+#include <QLabel>
+#include <QProcess>
+#include <QFile>
+#include <QTextStream>
+#include <QScrollBar>
+#include <QPalette>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QRadioButton>
+#include <QCheckBox>
+#include <QStyleFactory>
+#include <QTimer>
+#include <QFontDatabase>
+#include <QThread>
+#include <QDir>
+#include <QStandardPaths>
+#include <QTemporaryFile>
+#include <QSpinBox>
+#include <QDateTime>
 
-using namespace std;
+class PasswordDialog : public QDialog {
+public:
+    PasswordDialog(QWidget *parent = nullptr) : QDialog(parent) {
+        setWindowTitle("Enter Password");
+        QFormLayout *layout = new QFormLayout(this);
 
-#define RED "\033[38;2;255;0;0m"
-#define CYAN "\033[38;2;0;255;255m"
-#define NC "\033[0m"
+        passwordEdit = new QLineEdit;
+        passwordEdit->setEchoMode(QLineEdit::Password);
+        confirmEdit = new QLineEdit;
+        confirmEdit->setEchoMode(QLineEdit::Password);
 
-// Config variables
-string TARGET_DISK;
-string HOSTNAME;
-string TIMEZONE;
-string KEYMAP;
-string USER_NAME;
-string USER_PASSWORD;
-string ROOT_PASSWORD;
-string DESKTOP_ENV;
-string KERNEL_TYPE;
-string INITRAMFS;
-string BOOTLOADER;
-string BOOT_FS_TYPE = "fat32";
-vector<string> REPOS;
-int COMPRESSION_LEVEL;
+        layout->addRow("Password:", passwordEdit);
+        layout->addRow("Confirm Password:", confirmEdit);
 
-void show_ascii() {
-    system("clear");
-    cout << RED << R"(
-░█████╗░██╗░░░░░░█████╗░██║░░░██╗██████╗░███████╗███╗░░░███╗░█████╗░██████╗░░██████╗
-██╔══██╗██║░░░░░██╔══██╗██║░░░██║██╔══██╗██╔════╝████╗░████║██╔══██╗██╔══██╗██╔════╝
-██║░░╚═╝██║░░░░░███████║██║░░░██║██║░░██║█████╗░░██╔████╔██║██║░░██║██║░░██║╚█████╗░
-██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗
-╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝
-░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░)" << NC << endl;
-    cout << CYAN << "CachyOS Btrfs Installer v1.0" << NC << endl << endl;
+        QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        connect(buttonBox, &QDialogButtonBox::accepted, this, &PasswordDialog::validate);
+        connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+
+        layout->addWidget(buttonBox);
+    }
+
+    QString password() const { return passwordEdit->text(); }
+
+private:
+    void validate() {
+        if (passwordEdit->text() != confirmEdit->text()) {
+            QMessageBox::warning(this, "Error", "Passwords do not match!");
+            return;
+        }
+        if (passwordEdit->text().isEmpty()) {
+            QMessageBox::warning(this, "Error", "Password cannot be empty!");
+            return;
+        }
+        accept();
+    }
+
+    QLineEdit *passwordEdit;
+    QLineEdit *confirmEdit;
+};
+
+class CommandRunner : public QObject {
+    Q_OBJECT
+public:
+    explicit CommandRunner(QObject *parent = nullptr) : QObject(parent) {}
+
+    QString password() const { return m_sudoPassword; }
+
+signals:
+    void commandStarted(const QString &command);
+    void commandOutput(const QString &output);
+    void commandFinished(bool success);
+
+public slots:
+    void runCommand(const QString &command, const QStringList &args = QStringList(), bool asRoot = false) {
+        QProcess process;
+        process.setProcessChannelMode(QProcess::MergedChannels);
+
+        QString fullCommand;
+        if (asRoot) {
+            fullCommand = "sudo -S " + command;
+            if (!args.isEmpty()) {
+                fullCommand += " " + args.join(" ");
+            }
+        } else {
+            fullCommand = command;
+            if (!args.isEmpty()) {
+                fullCommand += " " + args.join(" ");
+            }
+        }
+
+        emit commandStarted(fullCommand);
+
+        if (asRoot) {
+            QStringList fullArgs;
+            fullArgs << "-S" << command;
+            fullArgs += args;
+
+            process.start("sudo", fullArgs);
+            if (!process.waitForStarted()) {
+                emit commandOutput("Failed to start sudo command\n");
+                emit commandFinished(false);
+                return;
+            }
+
+            process.write((m_sudoPassword + "\n").toUtf8());
+            process.closeWriteChannel();
+        } else {
+            process.start(command, args);
+        }
+
+        if (!process.waitForStarted()) {
+            emit commandOutput("Failed to start command: " + fullCommand + "\n");
+            emit commandFinished(false);
+            return;
+        }
+
+        while (process.waitForReadyRead()) {
+            QByteArray output = process.readAll();
+            emit commandOutput(QString::fromUtf8(output));
+        }
+
+        process.waitForFinished();
+
+        if (process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0) {
+            emit commandFinished(true);
+        } else {
+            emit commandOutput(QString("Command failed with exit code %1\n").arg(process.exitCode()));
+            emit commandFinished(false);
+        }
+    }
+
+    void setSudoPassword(const QString &password) {
+        m_sudoPassword = password;
+        m_sudoPassword.replace("'", "'\\''");
+    }
+
+private:
+    QString m_sudoPassword;
+};
+
+class CachyOSInstaller : public QMainWindow {
+    Q_OBJECT
+
+public:
+    CachyOSInstaller(QWidget *parent = nullptr) : QMainWindow(parent) {
+        // Set dark theme
+        qApp->setStyle(QStyleFactory::create("Fusion"));
+        QPalette darkPalette;
+        darkPalette.setColor(QPalette::Window, QColor(53,53,53));
+        darkPalette.setColor(QPalette::WindowText, Qt::white);
+        darkPalette.setColor(QPalette::Base, QColor(25,25,25));
+        darkPalette.setColor(QPalette::AlternateBase, QColor(53,53,53));
+        darkPalette.setColor(QPalette::ToolTipBase, Qt::white);
+        darkPalette.setColor(QPalette::ToolTipText, Qt::white);
+        darkPalette.setColor(QPalette::Text, Qt::white);
+        darkPalette.setColor(QPalette::Button, QColor(53,53,53));
+        darkPalette.setColor(QPalette::ButtonText, Qt::white);
+        darkPalette.setColor(QPalette::BrightText, Qt::red);
+        darkPalette.setColor(QPalette::Link, QColor(42, 130, 218));
+        darkPalette.setColor(QPalette::Highlight, QColor(42, 130, 218));
+        darkPalette.setColor(QPalette::HighlightedText, Qt::black);
+        qApp->setPalette(darkPalette);
+
+        // Create main widgets
+        QWidget *centralWidget = new QWidget;
+        QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
+
+        // ASCII art title
+        QLabel *titleLabel = new QLabel;
+        titleLabel->setText(
+            "<span style='color:#ff0000;'>░█████╗░██╗░░░░░░█████╗░██╗░░░██╗██████╗░███████╗███╗░░░███╗░█████╗░██████╗░░██████╗<br>"
+            "██╔══██╗██║░░░░░██╔══██╗██║░░░██║██╔══██╗██╔════╝████╗░████║██╔══██╗██╔══██╗██╔════╝<br>"
+            "██║░░╚═╝██║░░░░░███████║██║░░░██║██║░░██║█████╗░░██╔████╔██║██║░░██║██║░░██║╚█████╗░<br>"
+            "██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗<br>"
+            "╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝<br>"
+            "░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░</span><br>"
+            "<span style='color:#00ffff;'>CachyOS Btrfs Installer v1.0</span>"
+        );
+        titleLabel->setAlignment(Qt::AlignCenter);
+        mainLayout->addWidget(titleLabel);
+
+        // Progress bar with log button
+        QHBoxLayout *progressLayout = new QHBoxLayout;
+        progressBar = new QProgressBar;
+        progressBar->setRange(0, 100);
+        progressBar->setTextVisible(true);
+
+        // Customize progress bar with cyan gradient
+        QString progressStyle =
+        "QProgressBar {"
+        "    border: 2px solid grey;"
+        "    border-radius: 5px;"
+        "    text-align: center;"
+        "    background: #252525;"
+        "}"
+        "QProgressBar::chunk {"
+        "    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,"
+        "        stop:0 #00ffff, stop:1 #00aaff);"
+        "}";
+        progressBar->setStyleSheet(progressStyle);
+
+        QPushButton *logButton = new QPushButton("Log");
+        logButton->setFixedWidth(60);
+        connect(logButton, &QPushButton::clicked, this, &CachyOSInstaller::toggleLog);
+
+        progressLayout->addWidget(progressBar, 1);
+        progressLayout->addWidget(logButton);
+        mainLayout->addLayout(progressLayout);
+
+        // Log area
+        logArea = new QTextEdit;
+        logArea->setReadOnly(true);
+        logArea->setFont(QFont("Monospace", 10));
+        logArea->setStyleSheet("background-color: #252525; color: #00ffff;");
+        logArea->setVisible(false);
+        mainLayout->addWidget(logArea);
+
+        // Buttons
+        QHBoxLayout *buttonLayout = new QHBoxLayout;
+        QPushButton *configButton = new QPushButton("Configure Installation");
+        QPushButton *mirrorButton = new QPushButton("Find Fastest Mirrors");
+        QPushButton *installButton = new QPushButton("Start Installation");
+        QPushButton *exitButton = new QPushButton("Exit");
+
+        connect(configButton, &QPushButton::clicked, this, &CachyOSInstaller::configureInstallation);
+        connect(mirrorButton, &QPushButton::clicked, this, &CachyOSInstaller::findFastestMirrors);
+        connect(installButton, &QPushButton::clicked, this, &CachyOSInstaller::startInstallation);
+        connect(exitButton, &QPushButton::clicked, qApp, &QApplication::quit);
+
+        buttonLayout->addWidget(configButton);
+        buttonLayout->addWidget(mirrorButton);
+        buttonLayout->addWidget(installButton);
+        buttonLayout->addWidget(exitButton);
+        mainLayout->addLayout(buttonLayout);
+
+        setCentralWidget(centralWidget);
+        setWindowTitle("CachyOS BTRFS Installer");
+        resize(800, 600);
+
+        // Initialize empty settings
+        initSettings();
+
+        // Setup command runner thread
+        commandThread = new QThread;
+        commandRunner = new CommandRunner;
+        commandRunner->moveToThread(commandThread);
+
+        connect(this, &CachyOSInstaller::executeCommand, commandRunner, &CommandRunner::runCommand);
+        connect(commandRunner, &CommandRunner::commandStarted, this, &CachyOSInstaller::logCommand);
+        connect(commandRunner, &CommandRunner::commandOutput, this, &CachyOSInstaller::logOutput);
+        connect(commandRunner, &CommandRunner::commandFinished, this, &CachyOSInstaller::commandCompleted);
+
+        commandThread->start();
+    }
+
+    ~CachyOSInstaller() {
+        commandThread->quit();
+        commandThread->wait();
+        delete commandRunner;
+        delete commandThread;
+    }
+
+signals:
+    void executeCommand(const QString &command, const QStringList &args = QStringList(), bool asRoot = false);
+
+private slots:
+    void toggleLog() {
+        logArea->setVisible(!logArea->isVisible());
+    }
+
+    void configureInstallation() {
+        QDialog dialog(this);
+        dialog.setWindowTitle("Configure Installation");
+
+        QFormLayout *form = new QFormLayout(&dialog);
+
+        // Disk selection
+        QLineEdit *diskEdit = new QLineEdit(settings["targetDisk"].toString());
+        diskEdit->setPlaceholderText("e.g. /dev/sda");
+        form->addRow("Target Disk:", diskEdit);
+
+        // Hostname
+        QLineEdit *hostnameEdit = new QLineEdit(settings["hostname"].toString());
+        hostnameEdit->setPlaceholderText("e.g. cachyos");
+        form->addRow("Hostname:", hostnameEdit);
+
+        // Timezone
+        QLineEdit *timezoneEdit = new QLineEdit(settings["timezone"].toString());
+        timezoneEdit->setPlaceholderText("e.g. America/New_York");
+        form->addRow("Timezone:", timezoneEdit);
+
+        // Keymap
+        QLineEdit *keymapEdit = new QLineEdit(settings["keymap"].toString());
+        keymapEdit->setPlaceholderText("e.g. us");
+        form->addRow("Keymap:", keymapEdit);
+
+        // Username
+        QLineEdit *userEdit = new QLineEdit(settings["username"].toString());
+        userEdit->setPlaceholderText("e.g. user");
+        form->addRow("Username:", userEdit);
+
+        // Desktop environment
+        QComboBox *desktopCombo = new QComboBox;
+        desktopCombo->addItem("KDE Plasma", "KDE Plasma");
+        desktopCombo->addItem("GNOME", "GNOME");
+        desktopCombo->addItem("XFCE", "XFCE");
+        desktopCombo->addItem("MATE", "MATE");
+        desktopCombo->addItem("LXQt", "LXQt");
+        desktopCombo->addItem("Cinnamon", "Cinnamon");
+        desktopCombo->addItem("Budgie", "Budgie");
+        desktopCombo->addItem("Deepin", "Deepin");
+        desktopCombo->addItem("i3", "i3");
+        desktopCombo->addItem("Sway", "Sway");
+        desktopCombo->addItem("Hyprland", "Hyprland");
+        desktopCombo->addItem("None", "None");
+        if (!settings["desktopEnv"].toString().isEmpty()) {
+            desktopCombo->setCurrentText(settings["desktopEnv"].toString());
+        }
+        form->addRow("Desktop Environment:", desktopCombo);
+
+        // Kernel selection
+        QComboBox *kernelCombo = new QComboBox;
+        kernelCombo->addItem("Bore", "linux-cachyos-bore");
+        kernelCombo->addItem("Bore-Extra", "linux-cachyos-bore-extra");
+        kernelCombo->addItem("CachyOS", "linux-cachyos");
+        kernelCombo->addItem("CachyOS-Extra", "linux-cachyos-extra");
+        kernelCombo->addItem("LTS", "linux-lts");
+        kernelCombo->addItem("Zen", "linux-zen");
+        if (!settings["kernel"].toString().isEmpty()) {
+            kernelCombo->setCurrentText(settings["kernel"].toString());
+        }
+        form->addRow("Kernel:", kernelCombo);
+
+        // Bootloader
+        QComboBox *bootloaderCombo = new QComboBox;
+        bootloaderCombo->addItem("GRUB", "GRUB");
+        bootloaderCombo->addItem("systemd-boot", "systemd-boot");
+        bootloaderCombo->addItem("rEFInd", "rEFInd");
+        if (!settings["bootloader"].toString().isEmpty()) {
+            bootloaderCombo->setCurrentText(settings["bootloader"].toString());
+        }
+        form->addRow("Bootloader:", bootloaderCombo);
+
+        // Initramfs
+        QComboBox *initramfsCombo = new QComboBox;
+        initramfsCombo->addItem("mkinitcpio", "mkinitcpio");
+        initramfsCombo->addItem("dracut", "dracut");
+        initramfsCombo->addItem("booster", "booster");
+        initramfsCombo->addItem("mkinitcpio-pico", "mkinitcpio-pico");
+        if (!settings["initramfs"].toString().isEmpty()) {
+            initramfsCombo->setCurrentText(settings["initramfs"].toString());
+        }
+        form->addRow("Initramfs:", initramfsCombo);
+
+        // Compression level
+        QSpinBox *compressionSpin = new QSpinBox;
+        compressionSpin->setRange(0, 22);
+        if (!settings["compressionLevel"].toString().isEmpty()) {
+            compressionSpin->setValue(settings["compressionLevel"].toInt());
+        } else {
+            compressionSpin->setValue(3);
+        }
+        form->addRow("BTRFS Compression Level:", compressionSpin);
+
+        // Gaming meta package option
+        QCheckBox *gamingCheck = new QCheckBox("Install cachyos-gaming-meta");
+        if (settings["gamingMeta"].toBool()) {
+            gamingCheck->setChecked(true);
+        }
+        form->addRow(gamingCheck);
+
+        // Repository selection
+        QGroupBox *repoGroup = new QGroupBox("Additional Repositories");
+        QVBoxLayout *repoLayout = new QVBoxLayout;
+
+        QCheckBox *multilibCheck = new QCheckBox("Multilib");
+        QCheckBox *testingCheck = new QCheckBox("Testing");
+        QCheckBox *communityTestingCheck = new QCheckBox("Community Testing");
+        QCheckBox *cachyosCheck = new QCheckBox("CachyOS");
+        QCheckBox *cachyosV3Check = new QCheckBox("CachyOS V3");
+        QCheckBox *cachyosTestingCheck = new QCheckBox("CachyOS Testing");
+
+        if (settings["repos"].toStringList().contains("multilib")) multilibCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("testing")) testingCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("community-testing")) communityTestingCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("cachyos")) cachyosCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("cachyos-v3")) cachyosV3Check->setChecked(true);
+        if (settings["repos"].toStringList().contains("cachyos-testing")) cachyosTestingCheck->setChecked(true);
+
+        repoLayout->addWidget(multilibCheck);
+        repoLayout->addWidget(testingCheck);
+        repoLayout->addWidget(communityTestingCheck);
+        repoLayout->addWidget(cachyosCheck);
+        repoLayout->addWidget(cachyosV3Check);
+        repoLayout->addWidget(cachyosTestingCheck);
+        repoGroup->setLayout(repoLayout);
+        form->addRow(repoGroup);
+
+        // Password buttons
+        QPushButton *rootPassButton = new QPushButton(settings["rootPassword"].toString().isEmpty() ? "Set Root Password" : "Change Root Password");
+        QPushButton *userPassButton = new QPushButton(settings["userPassword"].toString().isEmpty() ? "Set User Password" : "Change User Password");
+        form->addRow(rootPassButton);
+        form->addRow(userPassButton);
+
+        connect(rootPassButton, &QPushButton::clicked, [this, rootPassButton]() {
+            PasswordDialog dlg(this);
+            if (dlg.exec() == QDialog::Accepted) {
+                settings["rootPassword"] = dlg.password();
+                rootPassButton->setText("Change Root Password");
+            }
+        });
+
+        connect(userPassButton, &QPushButton::clicked, [this, userPassButton]() {
+            PasswordDialog dlg(this);
+            if (dlg.exec() == QDialog::Accepted) {
+                settings["userPassword"] = dlg.password();
+                userPassButton->setText("Change User Password");
+            }
+        });
+
+        QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                                   Qt::Horizontal, &dialog);
+        form->addRow(&buttonBox);
+
+        connect(&buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+        connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+        if (dialog.exec() == QDialog::Accepted) {
+            settings["targetDisk"] = diskEdit->text();
+            settings["hostname"] = hostnameEdit->text();
+            settings["timezone"] = timezoneEdit->text();
+            settings["keymap"] = keymapEdit->text();
+            settings["username"] = userEdit->text();
+            settings["desktopEnv"] = desktopCombo->currentText();
+            settings["kernel"] = kernelCombo->currentData().toString();
+            settings["bootloader"] = bootloaderCombo->currentText();
+            settings["initramfs"] = initramfsCombo->currentText();
+            settings["compressionLevel"] = QString::number(compressionSpin->value());
+            settings["gamingMeta"] = gamingCheck->isChecked();
+
+            // Save repository selections
+            QStringList repos;
+            if (multilibCheck->isChecked()) repos << "multilib";
+            if (testingCheck->isChecked()) repos << "testing";
+            if (communityTestingCheck->isChecked()) repos << "community-testing";
+            if (cachyosCheck->isChecked()) repos << "cachyos";
+            if (cachyosV3Check->isChecked()) repos << "cachyos-v3";
+            if (cachyosTestingCheck->isChecked()) repos << "cachyos-testing";
+            settings["repos"] = repos;
+
+            logMessage("Installation configured with the following settings:");
+            logMessage(QString("Target Disk: %1").arg(settings["targetDisk"].toString()));
+            logMessage(QString("Hostname: %1").arg(settings["hostname"].toString()));
+            logMessage(QString("Timezone: %1").arg(settings["timezone"].toString()));
+            logMessage(QString("Keymap: %1").arg(settings["keymap"].toString()));
+            logMessage(QString("Username: %1").arg(settings["username"].toString()));
+            logMessage(QString("Desktop Environment: %1").arg(settings["desktopEnv"].toString()));
+            logMessage(QString("Kernel: %1").arg(settings["kernel"].toString()));
+            logMessage(QString("Bootloader: %1").arg(settings["bootloader"].toString()));
+            logMessage(QString("Initramfs: %1").arg(settings["initramfs"].toString()));
+            logMessage(QString("Compression Level: %1").arg(settings["compressionLevel"].toString()));
+            logMessage(QString("Gaming Meta: %1").arg(settings["gamingMeta"].toBool() ? "Yes" : "No"));
+            logMessage(QString("Repositories: %1").arg(settings["repos"].toStringList().join(", ")));
+        }
+    }
+
+    void findFastestMirrors() {
+        QMessageBox::StandardButton reply;
+        reply = QMessageBox::question(this, "Fastest Mirrors",
+                                      "Would you like to find and use the fastest mirrors?",
+                                      QMessageBox::Yes|QMessageBox::No);
+
+        if (reply == QMessageBox::Yes) {
+            logMessage("Finding fastest mirrors...");
+            progressBar->setValue(10);
+
+            // Install reflector if not present
+            emit executeCommand("pacstrap", {"/mnt", "reflector"}, true);
+
+            // Find and update mirrors
+            emit executeCommand("reflector", {"--latest", "20", "--protocol", "https", "--sort", "rate", "--save", "/etc/pacman.d/mirrorlist"}, true);
+
+            progressBar->setValue(100);
+            QTimer::singleShot(1000, [this]() {
+                progressBar->setValue(0);
+            });
+        } else {
+            logMessage("Using default mirrors");
+        }
+    }
+
+    void startInstallation() {
+        // Validate all required settings
+        QStringList missingFields;
+        if (settings["targetDisk"].toString().isEmpty()) missingFields << "Target Disk";
+        if (settings["hostname"].toString().isEmpty()) missingFields << "Hostname";
+        if (settings["timezone"].toString().isEmpty()) missingFields << "Timezone";
+        if (settings["keymap"].toString().isEmpty()) missingFields << "Keymap";
+        if (settings["username"].toString().isEmpty()) missingFields << "Username";
+        if (settings["desktopEnv"].toString().isEmpty()) missingFields << "Desktop Environment";
+        if (settings["kernel"].toString().isEmpty()) missingFields << "Kernel";
+        if (settings["bootloader"].toString().isEmpty()) missingFields << "Bootloader";
+        if (settings["initramfs"].toString().isEmpty()) missingFields << "Initramfs";
+        if (settings["compressionLevel"].toString().isEmpty()) missingFields << "Compression Level";
+        if (settings["rootPassword"].toString().isEmpty()) missingFields << "Root Password";
+        if (settings["userPassword"].toString().isEmpty()) missingFields << "User Password";
+
+        if (!missingFields.isEmpty()) {
+            QMessageBox::warning(this, "Error",
+                                 QString("The following required fields are missing:\n%1\n\nPlease configure all settings before installation.")
+                                 .arg(missingFields.join("\n")));
+            return;
+        }
+
+        // Show confirmation dialog
+        QString confirmationText = QString(
+            "About to install to %1 with these settings:\n"
+            "Hostname: %2\n"
+            "Timezone: %3\n"
+            "Keymap: %4\n"
+            "Username: %5\n"
+            "Desktop: %6\n"
+            "Kernel: %7\n"
+            "Bootloader: %8\n"
+            "Initramfs: %9\n"
+            "Compression Level: %10\n"
+            "Gaming Meta: %11\n"
+            "Repositories: %12\n\n"
+            "Continue?"
+        ).arg(
+            settings["targetDisk"].toString(),
+              settings["hostname"].toString(),
+              settings["timezone"].toString(),
+              settings["keymap"].toString(),
+              settings["username"].toString(),
+              settings["desktopEnv"].toString(),
+              settings["kernel"].toString(),
+              settings["bootloader"].toString(),
+              settings["initramfs"].toString(),
+              settings["compressionLevel"].toString(),
+              settings["gamingMeta"].toBool() ? "Yes" : "No",
+              settings["repos"].toStringList().join(", ")
+        );
+
+        QMessageBox::StandardButton reply;
+        reply = QMessageBox::question(this, "Confirm Installation", confirmationText,
+                                      QMessageBox::Yes|QMessageBox::No);
+
+        if (reply != QMessageBox::Yes) {
+            logMessage("Installation cancelled.");
+            return;
+        }
+
+        // Ask for sudo password before proceeding
+        PasswordDialog passDialog(this);
+        passDialog.setWindowTitle("Enter sudo Password");
+        if (passDialog.exec() != QDialog::Accepted) {
+            logMessage("Installation cancelled - no password provided.");
+            return;
+        }
+
+        // Set sudo password for command runner
+        commandRunner->setSudoPassword(passDialog.password());
+
+        // Start installation process
+        logMessage("Starting CachyOS BTRFS installation...");
+        progressBar->setValue(5);
+
+        // Begin installation steps
+        currentStep = 0;
+        totalSteps = 15; // Total number of installation steps
+        nextInstallationStep();
+    }
+
+    void nextInstallationStep() {
+        currentStep++;
+        int progress = (currentStep * 100) / totalSteps;
+        progressBar->setValue(progress);
+
+        QString disk1 = settings["targetDisk"].toString() + "1";
+        QString disk2 = settings["targetDisk"].toString() + "2";
+        QString compression = "zstd:" + settings["compressionLevel"].toString();
+
+        switch (currentStep) {
+            case 1: // Install required tools
+                logMessage("Installing required tools...");
+                emit executeCommand("pacstrap", {"/mnt", "btrfs-progs", "parted", "dosfstools", "efibootmgr"}, true);
+                break;
+
+            case 2: // Partitioning
+                logMessage("Partitioning disk...");
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mklabel", "gpt"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "1MiB", "513MiB"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "set", "1", "esp", "on"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "513MiB", "100%"}, true);
+                break;
+
+            case 3: // Formatting
+                logMessage("Formatting partitions...");
+                emit executeCommand("mkfs.vfat", {"-F32", disk1}, true);
+                emit executeCommand("mkfs.btrfs", {"-f", disk2}, true);
+                break;
+
+            case 4: // Mounting and subvolumes
+                logMessage("Creating BTRFS subvolumes...");
+                emit executeCommand("mount", {disk2, "/mnt"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@home"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@root"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@srv"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@tmp"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@log"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@cache"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@/var/lib/portables"}, true);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@/var/lib/machines"}, true);
+                emit executeCommand("umount", {"/mnt"}, true);
+                break;
+
+            case 5: // Remount with compression
+                logMessage("Remounting with compression...");
+                emit executeCommand("mount", {"-o", QString("subvol=@,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/boot/efi"}, true);
+                emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/home"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/root"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/srv"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/tmp"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/cache"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/log"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/portables"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/machines"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@home,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/home"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@root,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/root"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@srv,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/srv"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@tmp,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/tmp"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@log,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/log"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@cache,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/cache"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@/var/lib/portables,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/lib/portables"}, true);
+                emit executeCommand("mount", {"-o", QString("subvol=@/var/lib/machines,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/lib/machines"}, true);
+                break;
+
+            case 6: // Install base system with pacstrap
+                logMessage("Installing base system with pacstrap...");
+                {
+                    QStringList basePkgs = {"base", settings["kernel"].toString(), "linux-firmware", "btrfs-progs", "nano"};
+
+                    // Add bootloader packages
+                    if (settings["bootloader"].toString() == "GRUB") {
+                        basePkgs << "grub" << "efibootmgr" << "dosfstools" << "cachyos-grub-theme";
+                    } else if (settings["bootloader"].toString() == "systemd-boot") {
+                        basePkgs << "efibootmgr";
+                    } else if (settings["bootloader"].toString() == "rEFInd") {
+                        basePkgs << "refind";
+                    }
+
+                    // Add initramfs packages
+                    basePkgs << settings["initramfs"].toString();
+
+                    // Only add network manager if no desktop selected
+                    if (settings["desktopEnv"].toString() == "None") {
+                        basePkgs << "networkmanager";
+                    }
+
+                    // Add gaming meta if selected
+                    if (settings["gamingMeta"].toBool()) {
+                        basePkgs << "cachyos-gaming-meta";
+                    }
+
+                    // Build the pacstrap command
+                    QStringList pacstrapArgs;
+                    pacstrapArgs << "/mnt";
+                    pacstrapArgs.append(basePkgs);
+
+                    emit executeCommand("pacstrap", pacstrapArgs, true);
+                }
+                break;
+
+            case 7: // Enable selected repositories
+                logMessage("Enabling selected repositories...");
+                for (const QString &repo : settings["repos"].toStringList()) {
+                    if (repo == "cachyos" || repo == "cachyos-v3" || repo == "cachyos-testing") {
+                        // Import CachyOS key
+                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, true);
+                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--lsign-key", "F3B607488DB35A47"}, true);
+                    }
+                }
+                break;
+
+            case 8: // Generate fstab
+                logMessage("Generating fstab...");
+                {
+                    QString rootUuid = getDiskUuid(disk2);
+                    QString fstabContent = QString(
+                        "# Btrfs subvolumes (auto-added)\n"
+                        "UUID=%1 /              btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@ 0 0\n"
+                        "UUID=%1 /root          btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@root 0 0\n"
+                        "UUID=%1 /home          btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@home 0 0\n"
+                        "UUID=%1 /srv           btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@srv 0 0\n"
+                        "UUID=%1 /var/cache     btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@cache 0 0\n"
+                        "UUID=%1 /var/tmp       btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@tmp 0 0\n"
+                        "UUID=%1 /var/log       btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@log 0 0\n"
+                        "UUID=%1 /var/lib/portables btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/portables 0 0\n"
+                        "UUID=%1 /var/lib/machines btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/machines 0 0\n"
+                    ).arg(rootUuid, compression);
+
+                    QTemporaryFile tempFile;
+                    if (tempFile.open()) {
+                        QTextStream out(&tempFile);
+                        out << fstabContent;
+                        tempFile.close();
+                        emit executeCommand("cat", {tempFile.fileName(), ">>", "/mnt/etc/fstab"}, true);
+                    }
+                }
+                break;
+
+            case 9: // Mount required filesystems for chroot
+                logMessage("Preparing chroot environment...");
+                emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true);
+                emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true);
+                emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true);
+                break;
+
+            case 10: // Create chroot setup script
+                logMessage("Preparing chroot setup script...");
+                createChrootScript();
+                emit executeCommand("chmod", {"+x", "/mnt/setup-chroot.sh"}, true);
+                break;
+
+            case 11: // Run chroot setup
+                logMessage("Running chroot setup...");
+                emit executeCommand("arch-chroot", {"/mnt", "/setup-chroot.sh"}, true);
+                break;
+
+            case 12: // Clean up
+                logMessage("Cleaning up...");
+                emit executeCommand("umount", {"-R", "/mnt"}, true);
+                break;
+
+            case 13: // Installation complete
+                logMessage("Installation complete!");
+                progressBar->setValue(100);
+                showPostInstallOptions();
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    void commandCompleted(bool success) {
+        if (!success) {
+            logMessage("ERROR: Command failed!");
+            QMessageBox::critical(this, "Error", "A command failed during installation. Check the log for details.");
+            progressBar->setValue(0);
+            return;
+        }
+
+        // Proceed to next step
+        QTimer::singleShot(500, this, &CachyOSInstaller::nextInstallationStep);
+    }
+
+    void createChrootScript() {
+        QTemporaryFile tempFile;
+        if (tempFile.open()) {
+            QTextStream out(&tempFile);
+
+            out << "#!/bin/bash\n\n";
+            out << "# Basic system configuration\n";
+            out << "echo \"" << settings["hostname"].toString() << "\" > /etc/hostname\n";
+            out << "ln -sf /usr/share/zoneinfo/" << settings["timezone"].toString() << " /etc/localtime\n";
+            out << "hwclock --systohc\n";
+            out << "echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen\n";
+            out << "locale-gen\n";
+            out << "echo \"LANG=en_US.UTF-8\" > /etc/locale.conf\n";
+            out << "echo \"KEYMAP=" << settings["keymap"].toString() << "\" > /etc/vconsole.conf\n\n";
+
+            out << "# Users and passwords\n";
+            out << "echo \"root:" << settings["rootPassword"].toString() << "\" | chpasswd\n";
+            out << "useradd -m -G wheel,audio,video,storage,optical -s /bin/bash " << settings["username"].toString() << "\n";
+            out << "echo \"" << settings["username"].toString() << ":" << settings["userPassword"].toString() << "\" | chpasswd\n\n";
+
+            out << "# Configure sudo\n";
+            out << "echo \"%wheel ALL=(ALL) ALL\" > /etc/sudoers.d/wheel\n\n";
+
+            // Handle bootloader installation
+            out << "# Install bootloader\n";
+            if (settings["bootloader"].toString() == "GRUB") {
+                out << "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=CachyOS\n";
+                out << "grub-mkconfig -o /boot/grub/grub.cfg\n";
+            } else if (settings["bootloader"].toString() == "systemd-boot") {
+                out << "bootctl --path=/boot/efi install\n";
+                out << "mkdir -p /boot/efi/loader/entries\n";
+                out << "cat > /boot/efi/loader/loader.conf << 'LOADER'\n";
+                out << "default arch\n";
+                out << "timeout 3\n";
+                out << "editor  yes\n";
+                out << "LOADER\n\n";
+
+                out << "cat > /boot/efi/loader/entries/arch.conf << 'ENTRY'\n";
+                out << "title   CachyOS Linux\n";
+                out << "linux   /vmlinuz-" << settings["kernel"].toString() << "\n";
+                out << "initrd  /initramfs-" << settings["kernel"].toString() << ".img\n";
+                out << "options root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\n";
+                out << "ENTRY\n";
+            } else if (settings["bootloader"].toString() == "rEFInd") {
+                out << "refind-install\n";
+                out << "mkdir -p /boot/efi/EFI/refind/refind.conf\n";
+                out << "cat > /boot/efi/EFI/refind/refind.conf << 'REFIND'\n";
+                out << "menuentry \"CachyOS Linux\" {\n";
+                out << "    icon     /EFI/refind/icons/os_arch.png\n";
+                out << "    loader   /vmlinuz-" << settings["kernel"].toString() << "\n";
+                out << "    initrd   /initramfs-" << settings["kernel"].toString() << ".img\n";
+                out << "    options  \"root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\"\n";
+                out << "}\n";
+                out << "REFIND\n";
+            }
+
+            // Handle initramfs
+            out << "\n# Generate initramfs\n";
+            if (settings["initramfs"].toString() == "mkinitcpio") {
+                out << "mkinitcpio -P\n";
+            } else if (settings["initramfs"].toString() == "dracut") {
+                out << "dracut --regenerate-all --force\n";
+            } else if (settings["initramfs"].toString() == "booster") {
+                out << "booster generate\n";
+            } else if (settings["initramfs"].toString() == "mkinitcpio-pico") {
+                out << "mkinitcpio -P\n";
+            }
+
+            // Network manager (only enable if no desktop selected)
+            if (settings["desktopEnv"].toString() == "None") {
+                out << "\n# Enable NetworkManager\n";
+                out << "systemctl enable NetworkManager\n";
+            }
+
+            // Install desktop environment and related packages
+            out << "\n# Install desktop environment\n";
+            if (settings["desktopEnv"].toString() == "KDE Plasma") {
+                out << "pacstrap /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings\n";
+                out << "systemctl enable sddm\n";
+                out << "pacstrap /mnt firefox dolphin konsole\n";
+            } else if (settings["desktopEnv"].toString() == "GNOME") {
+                out << "pacstrap /mnt gnome gnome-extra gdm\n";
+                out << "systemctl enable gdm\n";
+                out << "pacstrap /mnt firefox gnome-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "XFCE") {
+                out << "pacstrap /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox mousepad xfce4-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "MATE") {
+                out << "pacstrap /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox pluma mate-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "LXQt") {
+                out << "pacstrap /mnt lxqt breeze-icons sddm\n";
+                out << "systemctl enable sddm\n";
+                out << "pacstrap /mnt firefox qterminal\n";
+            } else if (settings["desktopEnv"].toString() == "Cinnamon") {
+                out << "pacstrap /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox xed gnome-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "Budgie") {
+                out << "pacstrap /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox gnome-text-editor gnome-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "Deepin") {
+                out << "pacstrap /mnt deepin deepin-extra lightdm\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox deepin-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "i3") {
+                out << "pacstrap /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox alacritty\n";
+            } else if (settings["desktopEnv"].toString() == "Sway") {
+                out << "pacstrap /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox foot\n";
+            } else if (settings["desktopEnv"].toString() == "Hyprland") {
+                out << "pacstrap /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter\n";
+                out << "systemctl enable lightdm\n";
+                out << "pacstrap /mnt firefox kitty\n";
+
+                out << "# Create Hyprland config directory\n";
+                out << "mkdir -p /home/" << settings["username"].toString() << "/.config/hypr\n";
+                out << "cat > /home/" << settings["username"].toString() << "/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n";
+                out << "# This is a basic Hyprland config\n";
+                out << "exec-once = waybar &\n";
+                out << "exec-once = swaybg -i ~/wallpaper.jpg &\n\n";
+                out << "monitor=,preferred,auto,1\n\n";
+                out << "input {\n";
+                out << "    kb_layout = us\n";
+                out << "    follow_mouse = 1\n";
+                out << "    touchpad {\n";
+                out << "        natural_scroll = yes\n";
+                out << "    }\n";
+                out << "}\n\n";
+                out << "general {\n";
+                out << "    gaps_in = 5\n";
+                out << "    gaps_out = 10\n";
+                out << "    border_size = 2\n";
+                out << "    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg\n";
+                out << "    col.inactive_border = rgba(595959aa)\n";
+                out << "}\n\n";
+                out << "decoration {\n";
+                out << "    rounding = 5\n";
+                out << "    blur = yes\n";
+                out << "    blur_size = 3\n";
+                out << "    blur_passes = 1\n";
+                out << "    blur_new_optimizations = on\n";
+                out << "}\n\n";
+                out << "animations {\n";
+                out << "    enabled = yes\n";
+                out << "    bezier = myBezier, 0.05, 0.9, 0.1, 1.05\n";
+                out << "    animation = windows, 1, 7, myBezier\n";
+                out << "    animation = windowsOut, 1, 7, default, popin 80%\n";
+                out << "    animation = border, 1, 10, default\n";
+                out << "    animation = fade, 1, 7, default\n";
+                out << "    animation = workspaces, 1, 6, default\n";
+                out << "}\n\n";
+                out << "dwindle {\n";
+                out << "    pseudotile = yes\n";
+                out << "    preserve_split = yes\n";
+                out << "}\n\n";
+                out << "master {\n";
+                out << "    new_is_master = true\n";
+                out << "}\n\n";
+                out << "bind = SUPER, Return, exec, kitty\n";
+                out << "bind = SUPER, Q, killactive,\n";
+                out << "bind = SUPER, M, exit,\n";
+                out << "bind = SUPER, V, togglefloating,\n";
+                out << "bind = SUPER, F, fullscreen,\n";
+                out << "bind = SUPER, D, exec, rofi -show drun\n";
+                out << "bind = SUPER, P, pseudo,\n";
+                out << "bind = SUPER, J, togglesplit,\n";
+                out << "HYPRCONFIG\n";
+
+                out << "# Set ownership of config files\n";
+                out << "chown -R " << settings["username"].toString() << ":" << settings["username"].toString() << " /home/" << settings["username"].toString() << "/.config\n";
+            }
+
+            // Install gaming meta if selected
+            if (settings["gamingMeta"].toBool()) {
+                out << "\n# Install gaming packages\n";
+                out << "pacstrap /mnt cachyos-gaming-meta\n";
+            }
+
+            // Enable TRIM for SSDs
+            out << "\n# Enable TRIM\n";
+            out << "systemctl enable fstrim.timer\n";
+
+            // Clean up
+            out << "\n# Clean up\n";
+            out << "rm /setup-chroot.sh\n";
+
+            tempFile.close();
+
+            // Copy the temporary file to /mnt/setup-chroot.sh
+            QProcess::execute("cp", {tempFile.fileName(), "/mnt/setup-chroot.sh"});
+        }
+    }
+
+    void showPostInstallOptions() {
+        QDialog dialog(this);
+        dialog.setWindowTitle("Installation Complete");
+
+        QVBoxLayout *layout = new QVBoxLayout(&dialog);
+        QLabel *label = new QLabel("Installation complete! Select post-install action:");
+        layout->addWidget(label);
+
+        QPushButton *rebootButton = new QPushButton("Reboot now");
+        QPushButton *chrootButton = new QPushButton("Chroot into installed system");
+        QPushButton *exitButton = new QPushButton("Exit without rebooting");
+
+        layout->addWidget(rebootButton);
+        layout->addWidget(chrootButton);
+        layout->addWidget(exitButton);
+
+        connect(rebootButton, &QPushButton::clicked, [this, &dialog]() {
+            QProcess::execute("sudo", QStringList() << "-S" << "reboot");
+            dialog.accept();
+        });
+
+        connect(chrootButton, &QPushButton::clicked, [this, &dialog]() {
+            logMessage("Entering chroot...");
+            QString disk1 = settings["targetDisk"].toString() + "1";
+            QString disk2 = settings["targetDisk"].toString() + "2";
+
+            emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true);
+            emit executeCommand("mount", {"-o", "subvol=@", disk2, "/mnt"}, true);
+            emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true);
+            emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true);
+            emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true);
+            emit executeCommand("mount", {"--rbind", "/dev/pts", "/mnt/dev/pts"}, true);
+            emit executeCommand("arch-chroot", {"/mnt", "/bin/bash"}, true);
+            emit executeCommand("umount", {"-l", "/mnt"}, true);
+
+            dialog.accept();
+        });
+
+        connect(exitButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+        dialog.exec();
+    }
+
+    void logMessage(const QString &message) {
+        logArea->append(QString("[%1] %2").arg(QDateTime::currentDateTime().toString("hh:mm:ss"), message));
+        logArea->verticalScrollBar()->setValue(logArea->verticalScrollBar()->maximum());
+    }
+
+    void logCommand(const QString &command) {
+        logMessage("Executing: " + command);
+    }
+
+    void logOutput(const QString &output) {
+        logArea->insertPlainText(output);
+        logArea->verticalScrollBar()->setValue(logArea->verticalScrollBar()->maximum());
+    }
+
+    QString getDiskUuid(const QString &disk) {
+        QProcess process;
+        process.start("sudo", QStringList() << "-S" << "blkid" << "-s" << "UUID" << "-o" << "value" << disk);
+        process.write((commandRunner->password() + "\n").toUtf8());
+        process.closeWriteChannel();
+        process.waitForFinished();
+        return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+    }
+
+private:
+    void initSettings() {
+        settings["targetDisk"] = "";
+        settings["hostname"] = "";
+        settings["timezone"] = "";
+        settings["keymap"] = "";
+        settings["username"] = "";
+        settings["desktopEnv"] = "";
+        settings["kernel"] = "";
+        settings["bootloader"] = "";
+        settings["initramfs"] = "";
+        settings["compressionLevel"] = "";
+        settings["rootPassword"] = "";
+        settings["userPassword"] = "";
+        settings["gamingMeta"] = false;
+        settings["repos"] = QStringList();
+    }
+
+    QProgressBar *progressBar;
+    QTextEdit *logArea;
+    QMap<QString, QVariant> settings;
+    int currentStep;
+    int totalSteps;
+    CommandRunner *commandRunner;
+    QThread *commandThread;
+};
+
+int main(int argc, char *argv[]) {
+    QApplication app(argc, argv);
+
+    // Check if running as root
+    if (QProcess::execute("whoami", QStringList()) != 0) {
+        QMessageBox::critical(nullptr, "Error", "This application must be run as root!");
+        return 1;
+    }
+
+    CachyOSInstaller installer;
+    installer.show();
+
+    return app.exec();
 }
 
-void execute_command(const string& cmd) {
-    cout << CYAN << "[EXEC] " << cmd << NC << endl;
-    system(cmd.c_str());
-}
-
-string run_command(const string& cmd) {
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) return "";
-    char buffer[128];
-    string result;
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        result += buffer;
-    }
-    pclose(pipe);
-    if (!result.empty() && result.back() == '\n') {
-        result.pop_back();
-    }
-    return result;
-}
-
-void configure_installation() {
-    TARGET_DISK = run_command("dialog --title \"Target Disk\" --inputbox \"Enter target disk (e.g. /dev/nvme0n1):\" 10 50 2>&1 >/dev/tty");
-    
-    // Boot filesystem selection
-    string fs_choice = run_command("dialog --title \"Boot Filesystem\" --menu \"Select filesystem:\" 15 40 2 \"fat32\" \"FAT32 (Recommended)\" \"ext4\" \"EXT4\" 2>&1 >/dev/tty");
-    BOOT_FS_TYPE = (fs_choice == "fat32") ? "fat32" : "ext4";
-
-    HOSTNAME = run_command("dialog --title \"Hostname\" --inputbox \"Enter hostname:\" 10 50 2>&1 >/dev/tty");
-    TIMEZONE = run_command("dialog --title \"Timezone\" --inputbox \"Enter timezone:\" 10 50 2>&1 >/dev/tty");
-    KEYMAP = run_command("dialog --title \"Keymap\" --inputbox \"Enter keymap:\" 10 50 2>&1 >/dev/tty");
-    USER_NAME = run_command("dialog --title \"Username\" --inputbox \"Enter username:\" 10 50 2>&1 >/dev/tty");
-    USER_PASSWORD = run_command("dialog --title \"User Password\" --passwordbox \"Enter password:\" 10 50 2>&1 >/dev/tty");
-    ROOT_PASSWORD = run_command("dialog --title \"Root Password\" --passwordbox \"Enter root password:\" 10 50 2>&1 >/dev/tty");
-    
-    KERNEL_TYPE = run_command("dialog --title \"Kernel\" --menu \"Select kernel:\" 15 40 6 \"Bore\" \"CachyOS Bore\" \"Bore-Extra\" \"Bore with extras\" \"CachyOS\" \"Standard\" \"CachyOS-Extra\" \"With extras\" \"LTS\" \"Long-term\" \"Zen\" \"Zen kernel\" 2>&1 >/dev/tty");
-    INITRAMFS = run_command("dialog --title \"Initramfs\" --menu \"Select initramfs:\" 15 40 4 \"mkinitcpio\" \"Default\" \"dracut\" \"Alternative\" \"booster\" \"Fast\" \"mkinitcpio-pico\" \"Minimal\" 2>&1 >/dev/tty");
-    BOOTLOADER = run_command("dialog --title \"Bootloader\" --menu \"Select bootloader:\" 15 40 3 \"GRUB\" \"GRUB\" \"systemd-boot\" \"Minimal\" \"rEFInd\" \"Graphical\" 2>&1 >/dev/tty");
-    DESKTOP_ENV = run_command("dialog --title \"Desktop\" --menu \"Select desktop:\" 20 50 12 \"KDE Plasma\" \"KDE\" \"GNOME\" \"GNOME\" \"XFCE\" \"XFCE\" \"MATE\" \"MATE\" \"LXQt\" \"LXQt\" \"Cinnamon\" \"Cinnamon\" \"Budgie\" \"Budgie\" \"Deepin\" \"Deepin\" \"i3\" \"i3\" \"Sway\" \"Sway\" \"Hyprland\" \"Hyprland\" \"None\" \"None\" 2>&1 >/dev/tty");
-    
-    string comp_level = run_command("dialog --title \"Compression\" --inputbox \"Enter BTRFS compression level (1-22):\" 10 50 2>&1 >/dev/tty");
-    COMPRESSION_LEVEL = stoi(comp_level);
-}
-
-void perform_installation() {
-    show_ascii();
-
-    if (getuid() != 0) {
-        cout << RED << "Must be run as root!" << NC << endl;
-        exit(1);
-    }
-
-    if (access("/sys/firmware/efi", F_OK) == -1) {
-        cout << RED << "UEFI required!" << NC << endl;
-        exit(1);
-    }
-
-    // Partition names
-    string boot_part = TARGET_DISK + (TARGET_DISK.find("nvme") != string::npos ? "p1" : "1");
-    string root_part = TARGET_DISK + (TARGET_DISK.find("nvme") != string::npos ? "p2" : "2");
-
-    // Partitioning
-    execute_command("parted -s " + TARGET_DISK + " mklabel gpt");
-    execute_command("parted -s " + TARGET_DISK + " mkpart primary 1MiB 513MiB");
-    execute_command("parted -s " + TARGET_DISK + " set 1 esp on");
-    execute_command("parted -s " + TARGET_DISK + " mkpart primary 513MiB 100%");
-
-    // Formatting
-    if (BOOT_FS_TYPE == "fat32") {
-        execute_command("mkfs.vfat -F32 " + boot_part);
-    } else {
-        execute_command("mkfs.ext4 " + boot_part);
-    }
-    execute_command("mkfs.btrfs -f " + root_part);
-
-    // Mounting
-    execute_command("mount " + root_part + " /mnt");
-    execute_command("btrfs subvolume create /mnt/@");
-    execute_command("btrfs subvolume create /mnt/@home");
-    execute_command("btrfs subvolume create /mnt/@root");
-    execute_command("btrfs subvolume create /mnt/@srv");
-    execute_command("btrfs subvolume create /mnt/@cache");
-    execute_command("btrfs subvolume create /mnt/@tmp");
-    execute_command("btrfs subvolume create /mnt/@log");
-    execute_command("umount /mnt");
-
-    // Remount with compression
-    execute_command("mount -o subvol=@,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt");
-    execute_command("mkdir -p /mnt/boot/efi");
-    execute_command("mount " + boot_part + " /mnt/boot/efi");
-    execute_command("mkdir -p /mnt/home");
-    execute_command("mkdir -p /mnt/root");
-    execute_command("mkdir -p /mnt/srv");
-    execute_command("mkdir -p /mnt/tmp");
-    execute_command("mkdir -p /mnt/var/cache");
-    execute_command("mkdir -p /mnt/var/log");
-    execute_command("mount -o subvol=@home,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt/home");
-    execute_command("mount -o subvol=@root,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt/root");
-    execute_command("mount -o subvol=@srv,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt/srv");
-    execute_command("mount -o subvol=@tmp,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt/tmp");
-    execute_command("mount -o subvol=@cache,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt/var/cache");
-    execute_command("mount -o subvol=@log,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt/var/log");
-
-    // Kernel package
-    string KERNEL_PKG;
-    if (KERNEL_TYPE == "Bore") KERNEL_PKG = "linux-cachyos-bore";
-    else if (KERNEL_TYPE == "Bore-Extra") KERNEL_PKG = "linux-cachyos-bore-extra";
-    else if (KERNEL_TYPE == "CachyOS") KERNEL_PKG = "linux-cachyos";
-    else if (KERNEL_TYPE == "CachyOS-Extra") KERNEL_PKG = "linux-cachyos-extra";
-    else if (KERNEL_TYPE == "LTS") KERNEL_PKG = "linux-lts";
-    else if (KERNEL_TYPE == "Zen") KERNEL_PKG = "linux-zen";
-
-    // Base packages - EXACTLY AS IN YOUR SCRIPT
-    string BASE_PKGS = "base " + KERNEL_PKG + " linux-firmware btrfs-progs nano";
-    
-    if (BOOTLOADER == "GRUB") {
-        BASE_PKGS += " grub efibootmgr dosfstools cachyos-grub-theme";
-    } else if (BOOTLOADER == "systemd-boot") {
-        BASE_PKGS += " efibootmgr";
-    } else if (BOOTLOADER == "rEFInd") {
-        BASE_PKGS += " refind";
-    }
-    
-    if (INITRAMFS == "mkinitcpio") {
-        BASE_PKGS += " mkinitcpio";
-    } else if (INITRAMFS == "dracut") {
-        BASE_PKGS += " dracut";
-    } else if (INITRAMFS == "booster") {
-        BASE_PKGS += " booster";
-    } else if (INITRAMFS == "mkinitcpio-pico") {
-        BASE_PKGS += " mkinitcpio-pico";
-    }
-    
-    if (DESKTOP_ENV == "None") {
-        BASE_PKGS += " networkmanager";
-    }
-
-    // ORIGINAL PACSTRAP COMMAND - UNCHANGED
-    execute_command("pacstrap -i /mnt " + BASE_PKGS + " --noconfirm --disable-download-timeout");
-
-    // Generate fstab
-    string ROOT_UUID = run_command("blkid -s UUID -o value " + root_part);
-    ofstream fstab("/mnt/etc/fstab", ios::app);
-    fstab << "\n# Btrfs subvolumes\n"
-          << "UUID=" << ROOT_UUID << " / btrfs rw,noatime,compress=zstd:" << COMPRESSION_LEVEL << ",subvol=@ 0 0\n"
-          << "UUID=" << ROOT_UUID << " /home btrfs rw,noatime,compress=zstd:" << COMPRESSION_LEVEL << ",subvol=@home 0 0\n"
-          << "UUID=" << ROOT_UUID << " /root btrfs rw,noatime,compress=zstd:" << COMPRESSION_LEVEL << ",subvol=@root 0 0\n"
-          << "UUID=" << ROOT_UUID << " /srv btrfs rw,noatime,compress=zstd:" << COMPRESSION_LEVEL << ",subvol=@srv 0 0\n"
-          << "UUID=" << ROOT_UUID << " /var/cache btrfs rw,noatime,compress=zstd:" << COMPRESSION_LEVEL << ",subvol=@cache 0 0\n"
-          << "UUID=" << ROOT_UUID << " /var/tmp btrfs rw,noatime,compress=zstd:" << COMPRESSION_LEVEL << ",subvol=@tmp 0 0\n"
-          << "UUID=" << ROOT_UUID << " /var/log btrfs rw,noatime,compress=zstd:" << COMPRESSION_LEVEL << ",subvol=@log 0 0\n";
-    fstab.close();
-
-    // Chroot setup
-    string chroot_script = R"(#!/bin/bash
-# System config
-echo ")" + HOSTNAME + R"(" > /etc/hostname
-ln -sf /usr/share/zoneinfo/)" + TIMEZONE + R"( /etc/localtime
-hwclock --systohc
-echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
-locale-gen
-echo "LANG=en_US.UTF-8" > /etc/locale.conf
-echo "KEYMAP=)" + KEYMAP + R"(" > /etc/vconsole.conf
-
-# Users
-echo "root:)" + ROOT_PASSWORD + R"(" | chpasswd
-useradd -m -G wheel,audio,video,storage,optical -s /bin/bash ")" + USER_NAME + R"("
-echo ")" + USER_NAME + ":" + USER_PASSWORD + R"(" | chpasswd
-echo "%wheel ALL=(ALL) ALL" > /etc/sudoers.d/wheel
-
-# Bootloader
-)";
-
-    if (BOOTLOADER == "GRUB") {
-        chroot_script += R"(
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=CachyOS
-grub-mkconfig -o /boot/grub/grub.cfg
-)";
-    } else if (BOOTLOADER == "systemd-boot") {
-        chroot_script += R"(
-bootctl --path=/boot/efi install
-mkdir -p /boot/efi/loader/entries
-cat > /boot/efi/loader/loader.conf << 'LOADER'
-default arch
-timeout 3
-editor  yes
-LOADER
-
-cat > /boot/efi/loader/entries/arch.conf << 'ENTRY'
-title   CachyOS Linux
-linux   /vmlinuz-)" + KERNEL_PKG + R"(
-initrd  /initramfs-)" + KERNEL_PKG + R"(.img
-options root=UUID=)" + ROOT_UUID + R"( rootflags=subvol=@ rw
-ENTRY
-)";
-    } else if (BOOTLOADER == "rEFInd") {
-        chroot_script += R"(
-refind-install
-mkdir -p /boot/efi/EFI/refind/refind.conf
-cat > /boot/efi/EFI/refind/refind.conf << 'REFIND'
-menuentry "CachyOS Linux" {
-    icon     /EFI/refind/icons/os_arch.png
-    loader   /vmlinuz-)" + KERNEL_PKG + R"(
-    initrd   /initramfs-)" + KERNEL_PKG + R"(.img
-    options  "root=UUID=)" + ROOT_UUID + R"( rootflags=subvol=@ rw"
-}
-REFIND
-)";
-    }
-
-    chroot_script += R"(
-# Initramfs
-)";
-
-    if (INITRAMFS == "mkinitcpio") {
-        chroot_script += "mkinitcpio -P\n";
-    } else if (INITRAMFS == "dracut") {
-        chroot_script += "dracut --regenerate-all --force\n";
-    } else if (INITRAMFS == "booster") {
-        chroot_script += "booster generate\n";
-    } else if (INITRAMFS == "mkinitcpio-pico") {
-        chroot_script += "mkinitcpio -P\n";
-    }
-
-    chroot_script += R"(
-# Network
-)";
-
-    if (DESKTOP_ENV == "None") {
-        chroot_script += "systemctl enable NetworkManager\n";
-    }
-
-    chroot_script += R"(
-# Desktop environments - EXACTLY AS IN YOUR SCRIPT
-)";
-
-    if (DESKTOP_ENV == "KDE Plasma") {
-        chroot_script += R"(
-pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout
-systemctl enable sddm
-pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "GNOME") {
-        chroot_script += R"(
-pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout
-systemctl enable gdm
-pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "XFCE") {
-        chroot_script += R"(
-pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "MATE") {
-        chroot_script += R"(
-pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "LXQt") {
-        chroot_script += R"(
-pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout
-systemctl enable sddm
-pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "Cinnamon") {
-        chroot_script += R"(
-pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "Budgie") {
-        chroot_script += R"(
-pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "Deepin") {
-        chroot_script += R"(
-pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "i3") {
-        chroot_script += R"(
-pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "Sway") {
-        chroot_script += R"(
-pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-)";
-    } else if (DESKTOP_ENV == "Hyprland") {
-        chroot_script += R"(
-pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
-systemctl enable lightdm
-pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
-fi
-
-# Hyprland config
-mkdir -p /home/)" + USER_NAME + R"(/.config/hypr
-cat > /home/)" + USER_NAME + R"(/.config/hypr/hyprland.conf << 'HYPRCONFIG'
-exec-once = waybar &
-exec-once = swaybg -i ~/wallpaper.jpg &
-monitor=,preferred,auto,1
-input {
-    kb_layout = us
-    follow_mouse = 1
-    touchpad { natural_scroll = yes }
-}
-general {
-    gaps_in = 5
-    gaps_out = 10
-    border_size = 2
-    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg
-    col.inactive_border = rgba(595959aa)
-}
-decoration {
-    rounding = 5
-    blur = yes
-    blur_size = 3
-    blur_passes = 1
-}
-animations {
-    enabled = yes
-    bezier = myBezier, 0.05, 0.9, 0.1, 1.05
-    animation = windows, 1, 7, myBezier
-    animation = windowsOut, 1, 7, default, popin 80%
-    animation = border, 1, 10, default
-    animation = fade, 1, 7, default
-    animation = workspaces, 1, 6, default
-}
-bind = SUPER, Return, exec, kitty
-bind = SUPER, Q, killactive
-bind = SUPER, M, exit
-bind = SUPER, V, togglefloating
-bind = SUPER, F, fullscreen
-bind = SUPER, D, exec, rofi -show drun
-bind = SUPER, P, pseudo
-bind = SUPER, J, togglesplit
-HYPRCONFIG
-chown -R )" + USER_NAME + ":" + USER_NAME + " /home/" + USER_NAME + R"(/.config
-)";
-    }
-
-    chroot_script += R"(
-# Clean up
-rm /setup-chroot.sh
-)";
-
-    ofstream chroot_file("/mnt/setup-chroot.sh");
-    chroot_file << chroot_script;
-    chroot_file.close();
-
-    execute_command("chmod +x /mnt/setup-chroot.sh");
-    execute_command("arch-chroot /mnt /setup-chroot.sh");
-
-    execute_command("umount -R /mnt");
-    cout << CYAN << "Installation complete!" << NC << endl;
-}
-
-int main() {
-    show_ascii();
-    configure_installation();
-    perform_installation();
-    return 0;
-}
+#include "main.moc"
