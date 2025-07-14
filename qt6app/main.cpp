@@ -76,6 +76,8 @@ class CommandRunner : public QObject {
 public:
     explicit CommandRunner(QObject *parent = nullptr) : QObject(parent) {}
 
+    QString password() const { return m_sudoPassword; }
+
 signals:
     void commandStarted(const QString &command);
     void commandOutput(const QString &output);
@@ -286,27 +288,27 @@ private slots:
         QFormLayout *form = new QFormLayout(&dialog);
 
         // Disk selection
-        QLineEdit *diskEdit = new QLineEdit(settings["targetDisk"]);
+        QLineEdit *diskEdit = new QLineEdit(settings["targetDisk"].toString());
         diskEdit->setPlaceholderText("e.g. /dev/sda");
         form->addRow("Target Disk:", diskEdit);
 
         // Hostname
-        QLineEdit *hostnameEdit = new QLineEdit(settings["hostname"]);
+        QLineEdit *hostnameEdit = new QLineEdit(settings["hostname"].toString());
         hostnameEdit->setPlaceholderText("e.g. cachyos");
         form->addRow("Hostname:", hostnameEdit);
 
         // Timezone
-        QLineEdit *timezoneEdit = new QLineEdit(settings["timezone"]);
+        QLineEdit *timezoneEdit = new QLineEdit(settings["timezone"].toString());
         timezoneEdit->setPlaceholderText("e.g. America/New_York");
         form->addRow("Timezone:", timezoneEdit);
 
         // Keymap
-        QLineEdit *keymapEdit = new QLineEdit(settings["keymap"]);
+        QLineEdit *keymapEdit = new QLineEdit(settings["keymap"].toString());
         keymapEdit->setPlaceholderText("e.g. us");
         form->addRow("Keymap:", keymapEdit);
 
         // Username
-        QLineEdit *userEdit = new QLineEdit(settings["username"]);
+        QLineEdit *userEdit = new QLineEdit(settings["username"].toString());
         userEdit->setPlaceholderText("e.g. user");
         form->addRow("Username:", userEdit);
 
@@ -324,8 +326,8 @@ private slots:
         desktopCombo->addItem("Sway", "Sway");
         desktopCombo->addItem("Hyprland", "Hyprland");
         desktopCombo->addItem("None", "None");
-        if (!settings["desktopEnv"].isEmpty()) {
-            desktopCombo->setCurrentText(settings["desktopEnv"]);
+        if (!settings["desktopEnv"].toString().isEmpty()) {
+            desktopCombo->setCurrentText(settings["desktopEnv"].toString());
         }
         form->addRow("Desktop Environment:", desktopCombo);
 
@@ -337,8 +339,8 @@ private slots:
         kernelCombo->addItem("CachyOS-Extra", "linux-cachyos-extra");
         kernelCombo->addItem("LTS", "linux-lts");
         kernelCombo->addItem("Zen", "linux-zen");
-        if (!settings["kernel"].isEmpty()) {
-            kernelCombo->setCurrentText(settings["kernel"]);
+        if (!settings["kernel"].toString().isEmpty()) {
+            kernelCombo->setCurrentText(settings["kernel"].toString());
         }
         form->addRow("Kernel:", kernelCombo);
 
@@ -347,8 +349,8 @@ private slots:
         bootloaderCombo->addItem("GRUB", "GRUB");
         bootloaderCombo->addItem("systemd-boot", "systemd-boot");
         bootloaderCombo->addItem("rEFInd", "rEFInd");
-        if (!settings["bootloader"].isEmpty()) {
-            bootloaderCombo->setCurrentText(settings["bootloader"]);
+        if (!settings["bootloader"].toString().isEmpty()) {
+            bootloaderCombo->setCurrentText(settings["bootloader"].toString());
         }
         form->addRow("Bootloader:", bootloaderCombo);
 
@@ -358,15 +360,15 @@ private slots:
         initramfsCombo->addItem("dracut", "dracut");
         initramfsCombo->addItem("booster", "booster");
         initramfsCombo->addItem("mkinitcpio-pico", "mkinitcpio-pico");
-        if (!settings["initramfs"].isEmpty()) {
-            initramfsCombo->setCurrentText(settings["initramfs"]);
+        if (!settings["initramfs"].toString().isEmpty()) {
+            initramfsCombo->setCurrentText(settings["initramfs"].toString());
         }
         form->addRow("Initramfs:", initramfsCombo);
 
         // Compression level
         QSpinBox *compressionSpin = new QSpinBox;
         compressionSpin->setRange(0, 22);
-        if (!settings["compressionLevel"].isEmpty()) {
+        if (!settings["compressionLevel"].toString().isEmpty()) {
             compressionSpin->setValue(settings["compressionLevel"].toInt());
         } else {
             compressionSpin->setValue(3);
@@ -391,12 +393,12 @@ private slots:
         QCheckBox *cachyosV3Check = new QCheckBox("CachyOS V3");
         QCheckBox *cachyosTestingCheck = new QCheckBox("CachyOS Testing");
         
-        if (settings["repos"].contains("multilib")) multilibCheck->setChecked(true);
-        if (settings["repos"].contains("testing")) testingCheck->setChecked(true);
-        if (settings["repos"].contains("community-testing")) communityTestingCheck->setChecked(true);
-        if (settings["repos"].contains("cachyos")) cachyosCheck->setChecked(true);
-        if (settings["repos"].contains("cachyos-v3")) cachyosV3Check->setChecked(true);
-        if (settings["repos"].contains("cachyos-testing")) cachyosTestingCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("multilib")) multilibCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("testing")) testingCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("community-testing")) communityTestingCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("cachyos")) cachyosCheck->setChecked(true);
+        if (settings["repos"].toStringList().contains("cachyos-v3")) cachyosV3Check->setChecked(true);
+        if (settings["repos"].toStringList().contains("cachyos-testing")) cachyosTestingCheck->setChecked(true);
         
         repoLayout->addWidget(multilibCheck);
         repoLayout->addWidget(testingCheck);
@@ -408,8 +410,8 @@ private slots:
         form->addRow(repoGroup);
 
         // Password buttons
-        QPushButton *rootPassButton = new QPushButton(settings["rootPassword"].isEmpty() ? "Set Root Password" : "Change Root Password");
-        QPushButton *userPassButton = new QPushButton(settings["userPassword"].isEmpty() ? "Set User Password" : "Change User Password");
+        QPushButton *rootPassButton = new QPushButton(settings["rootPassword"].toString().isEmpty() ? "Set Root Password" : "Change Root Password");
+        QPushButton *userPassButton = new QPushButton(settings["userPassword"].toString().isEmpty() ? "Set User Password" : "Change User Password");
         form->addRow(rootPassButton);
         form->addRow(userPassButton);
 
@@ -450,27 +452,28 @@ private slots:
             settings["gamingMeta"] = gamingCheck->isChecked();
             
             // Save repository selections
-            settings["repos"].clear();
-            if (multilibCheck->isChecked()) settings["repos"] << "multilib";
-            if (testingCheck->isChecked()) settings["repos"] << "testing";
-            if (communityTestingCheck->isChecked()) settings["repos"] << "community-testing";
-            if (cachyosCheck->isChecked()) settings["repos"] << "cachyos";
-            if (cachyosV3Check->isChecked()) settings["repos"] << "cachyos-v3";
-            if (cachyosTestingCheck->isChecked()) settings["repos"] << "cachyos-testing";
+            QStringList repos;
+            if (multilibCheck->isChecked()) repos << "multilib";
+            if (testingCheck->isChecked()) repos << "testing";
+            if (communityTestingCheck->isChecked()) repos << "community-testing";
+            if (cachyosCheck->isChecked()) repos << "cachyos";
+            if (cachyosV3Check->isChecked()) repos << "cachyos-v3";
+            if (cachyosTestingCheck->isChecked()) repos << "cachyos-testing";
+            settings["repos"] = repos;
 
             logMessage("Installation configured with the following settings:");
-            logMessage(QString("Target Disk: %1").arg(settings["targetDisk"]));
-            logMessage(QString("Hostname: %1").arg(settings["hostname"]));
-            logMessage(QString("Timezone: %1").arg(settings["timezone"]));
-            logMessage(QString("Keymap: %1").arg(settings["keymap"]));
-            logMessage(QString("Username: %1").arg(settings["username"]));
-            logMessage(QString("Desktop Environment: %1").arg(settings["desktopEnv"]));
-            logMessage(QString("Kernel: %1").arg(settings["kernel"]));
-            logMessage(QString("Bootloader: %1").arg(settings["bootloader"]));
-            logMessage(QString("Initramfs: %1").arg(settings["initramfs"]));
-            logMessage(QString("Compression Level: %1").arg(settings["compressionLevel"]));
+            logMessage(QString("Target Disk: %1").arg(settings["targetDisk"].toString()));
+            logMessage(QString("Hostname: %1").arg(settings["hostname"].toString()));
+            logMessage(QString("Timezone: %1").arg(settings["timezone"].toString()));
+            logMessage(QString("Keymap: %1").arg(settings["keymap"].toString()));
+            logMessage(QString("Username: %1").arg(settings["username"].toString()));
+            logMessage(QString("Desktop Environment: %1").arg(settings["desktopEnv"].toString()));
+            logMessage(QString("Kernel: %1").arg(settings["kernel"].toString()));
+            logMessage(QString("Bootloader: %1").arg(settings["bootloader"].toString()));
+            logMessage(QString("Initramfs: %1").arg(settings["initramfs"].toString()));
+            logMessage(QString("Compression Level: %1").arg(settings["compressionLevel"].toString()));
             logMessage(QString("Gaming Meta: %1").arg(settings["gamingMeta"].toBool() ? "Yes" : "No"));
-            logMessage(QString("Repositories: %1").arg(settings["repos"].join(", ")));
+            logMessage(QString("Repositories: %1").arg(settings["repos"].toStringList().join(", ")));
         }
     }
 
@@ -485,7 +488,7 @@ private slots:
             progressBar->setValue(10);
 
             // Install reflector if not present
-            emit executeCommand("pacman", {"-Sy", "--noconfirm", "reflector"}, true);
+            emit executeCommand("pacstrap", {"/mnt", "reflector"}, true);
 
             // Find and update mirrors
             emit executeCommand("reflector", {"--latest", "20", "--protocol", "https", "--sort", "rate", "--save", "/etc/pacman.d/mirrorlist"}, true);
@@ -502,18 +505,18 @@ private slots:
     void startInstallation() {
         // Validate all required settings
         QStringList missingFields;
-        if (settings["targetDisk"].isEmpty()) missingFields << "Target Disk";
-        if (settings["hostname"].isEmpty()) missingFields << "Hostname";
-        if (settings["timezone"].isEmpty()) missingFields << "Timezone";
-        if (settings["keymap"].isEmpty()) missingFields << "Keymap";
-        if (settings["username"].isEmpty()) missingFields << "Username";
-        if (settings["desktopEnv"].isEmpty()) missingFields << "Desktop Environment";
-        if (settings["kernel"].isEmpty()) missingFields << "Kernel";
-        if (settings["bootloader"].isEmpty()) missingFields << "Bootloader";
-        if (settings["initramfs"].isEmpty()) missingFields << "Initramfs";
-        if (settings["compressionLevel"].isEmpty()) missingFields << "Compression Level";
-        if (settings["rootPassword"].isEmpty()) missingFields << "Root Password";
-        if (settings["userPassword"].isEmpty()) missingFields << "User Password";
+        if (settings["targetDisk"].toString().isEmpty()) missingFields << "Target Disk";
+        if (settings["hostname"].toString().isEmpty()) missingFields << "Hostname";
+        if (settings["timezone"].toString().isEmpty()) missingFields << "Timezone";
+        if (settings["keymap"].toString().isEmpty()) missingFields << "Keymap";
+        if (settings["username"].toString().isEmpty()) missingFields << "Username";
+        if (settings["desktopEnv"].toString().isEmpty()) missingFields << "Desktop Environment";
+        if (settings["kernel"].toString().isEmpty()) missingFields << "Kernel";
+        if (settings["bootloader"].toString().isEmpty()) missingFields << "Bootloader";
+        if (settings["initramfs"].toString().isEmpty()) missingFields << "Initramfs";
+        if (settings["compressionLevel"].toString().isEmpty()) missingFields << "Compression Level";
+        if (settings["rootPassword"].toString().isEmpty()) missingFields << "Root Password";
+        if (settings["userPassword"].toString().isEmpty()) missingFields << "User Password";
 
         if (!missingFields.isEmpty()) {
             QMessageBox::warning(this, "Error",
@@ -538,18 +541,18 @@ private slots:
             "Repositories: %12\n\n"
             "Continue?"
         ).arg(
-            settings["targetDisk"],
-            settings["hostname"],
-            settings["timezone"],
-            settings["keymap"],
-            settings["username"],
-            settings["desktopEnv"],
-            settings["kernel"],
-            settings["bootloader"],
-            settings["initramfs"],
-            settings["compressionLevel"],
+            settings["targetDisk"].toString(),
+            settings["hostname"].toString(),
+            settings["timezone"].toString(),
+            settings["keymap"].toString(),
+            settings["username"].toString(),
+            settings["desktopEnv"].toString(),
+            settings["kernel"].toString(),
+            settings["bootloader"].toString(),
+            settings["initramfs"].toString(),
+            settings["compressionLevel"].toString(),
             settings["gamingMeta"].toBool() ? "Yes" : "No",
-            settings["repos"].join(", ")
+            settings["repos"].toStringList().join(", ")
         );
 
         QMessageBox::StandardButton reply;
@@ -587,22 +590,22 @@ private slots:
         int progress = (currentStep * 100) / totalSteps;
         progressBar->setValue(progress);
 
-        QString disk1 = settings["targetDisk"] + "1";
-        QString disk2 = settings["targetDisk"] + "2";
-        QString compression = "zstd:" + settings["compressionLevel"];
+        QString disk1 = settings["targetDisk"].toString() + "1";
+        QString disk2 = settings["targetDisk"].toString() + "2";
+        QString compression = "zstd:" + settings["compressionLevel"].toString();
 
         switch (currentStep) {
             case 1: // Install required tools
                 logMessage("Installing required tools...");
-                emit executeCommand("pacman", {"-Sy", "--noconfirm", "btrfs-progs", "parted", "dosfstools", "efibootmgr"}, true);
+                emit executeCommand("pacstrap", {"/mnt", "btrfs-progs", "parted", "dosfstools", "efibootmgr"}, true);
                 break;
 
             case 2: // Partitioning
                 logMessage("Partitioning disk...");
-                emit executeCommand("parted", {"-s", settings["targetDisk"], "mklabel", "gpt"}, true);
-                emit executeCommand("parted", {"-s", settings["targetDisk"], "mkpart", "primary", "1MiB", "513MiB"}, true);
-                emit executeCommand("parted", {"-s", settings["targetDisk"], "set", "1", "esp", "on"}, true);
-                emit executeCommand("parted", {"-s", settings["targetDisk"], "mkpart", "primary", "513MiB", "100%"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mklabel", "gpt"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "1MiB", "513MiB"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "set", "1", "esp", "on"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "513MiB", "100%"}, true);
                 break;
 
             case 3: // Formatting
@@ -652,22 +655,22 @@ private slots:
             case 6: // Install base system with pacstrap
                 logMessage("Installing base system with pacstrap...");
                 {
-                    QStringList basePkgs = {"base", settings["kernel"], "linux-firmware", "btrfs-progs", "nano"};
+                    QStringList basePkgs = {"base", settings["kernel"].toString(), "linux-firmware", "btrfs-progs", "nano"};
                     
                     // Add bootloader packages
-                    if (settings["bootloader"] == "GRUB") {
+                    if (settings["bootloader"].toString() == "GRUB") {
                         basePkgs << "grub" << "efibootmgr" << "dosfstools" << "cachyos-grub-theme";
-                    } else if (settings["bootloader"] == "systemd-boot") {
+                    } else if (settings["bootloader"].toString() == "systemd-boot") {
                         basePkgs << "efibootmgr";
-                    } else if (settings["bootloader"] == "rEFInd") {
+                    } else if (settings["bootloader"].toString() == "rEFInd") {
                         basePkgs << "refind";
                     }
                     
                     // Add initramfs packages
-                    basePkgs << settings["initramfs"];
+                    basePkgs << settings["initramfs"].toString();
                     
                     // Only add network manager if no desktop selected
-                    if (settings["desktopEnv"] == "None") {
+                    if (settings["desktopEnv"].toString() == "None") {
                         basePkgs << "networkmanager";
                     }
 
@@ -678,7 +681,7 @@ private slots:
 
                     // Build the pacstrap command
                     QStringList pacstrapArgs;
-                    pacstrapArgs << "-i" << "/mnt";
+                    pacstrapArgs << "/mnt";
                     pacstrapArgs.append(basePkgs);
                     
                     emit executeCommand("pacstrap", pacstrapArgs, true);
@@ -687,7 +690,7 @@ private slots:
 
             case 7: // Enable selected repositories
                 logMessage("Enabling selected repositories...");
-                for (const QString &repo : settings["repos"]) {
+                for (const QString &repo : settings["repos"].toStringList()) {
                     if (repo == "cachyos" || repo == "cachyos-v3" || repo == "cachyos-testing") {
                         // Import CachyOS key
                         emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, true);
@@ -776,28 +779,28 @@ private slots:
 
             out << "#!/bin/bash\n\n";
             out << "# Basic system configuration\n";
-            out << "echo \"" << settings["hostname"] << "\" > /etc/hostname\n";
-            out << "ln -sf /usr/share/zoneinfo/" << settings["timezone"] << " /etc/localtime\n";
+            out << "echo \"" << settings["hostname"].toString() << "\" > /etc/hostname\n";
+            out << "ln -sf /usr/share/zoneinfo/" << settings["timezone"].toString() << " /etc/localtime\n";
             out << "hwclock --systohc\n";
             out << "echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen\n";
             out << "locale-gen\n";
             out << "echo \"LANG=en_US.UTF-8\" > /etc/locale.conf\n";
-            out << "echo \"KEYMAP=" << settings["keymap"] << "\" > /etc/vconsole.conf\n\n";
+            out << "echo \"KEYMAP=" << settings["keymap"].toString() << "\" > /etc/vconsole.conf\n\n";
 
             out << "# Users and passwords\n";
-            out << "echo \"root:" << settings["rootPassword"] << "\" | chpasswd\n";
-            out << "useradd -m -G wheel,audio,video,storage,optical -s /bin/bash " << settings["username"] << "\n";
-            out << "echo \"" << settings["username"] << ":" << settings["userPassword"] << "\" | chpasswd\n\n";
+            out << "echo \"root:" << settings["rootPassword"].toString() << "\" | chpasswd\n";
+            out << "useradd -m -G wheel,audio,video,storage,optical -s /bin/bash " << settings["username"].toString() << "\n";
+            out << "echo \"" << settings["username"].toString() << ":" << settings["userPassword"].toString() << "\" | chpasswd\n\n";
 
             out << "# Configure sudo\n";
             out << "echo \"%wheel ALL=(ALL) ALL\" > /etc/sudoers.d/wheel\n\n";
 
             // Handle bootloader installation
             out << "# Install bootloader\n";
-            if (settings["bootloader"] == "GRUB") {
+            if (settings["bootloader"].toString() == "GRUB") {
                 out << "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=CachyOS\n";
                 out << "grub-mkconfig -o /boot/grub/grub.cfg\n";
-            } else if (settings["bootloader"] == "systemd-boot") {
+            } else if (settings["bootloader"].toString() == "systemd-boot") {
                 out << "bootctl --path=/boot/efi install\n";
                 out << "mkdir -p /boot/efi/loader/entries\n";
                 out << "cat > /boot/efi/loader/loader.conf << 'LOADER'\n";
@@ -808,91 +811,91 @@ private slots:
 
                 out << "cat > /boot/efi/loader/entries/arch.conf << 'ENTRY'\n";
                 out << "title   CachyOS Linux\n";
-                out << "linux   /vmlinuz-" << settings["kernel"] << "\n";
-                out << "initrd  /initramfs-" << settings["kernel"] << ".img\n";
-                out << "options root=UUID=" << getDiskUuid(settings["targetDisk"] + "2") << " rootflags=subvol=@ rw\n";
+                out << "linux   /vmlinuz-" << settings["kernel"].toString() << "\n";
+                out << "initrd  /initramfs-" << settings["kernel"].toString() << ".img\n";
+                out << "options root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\n";
                 out << "ENTRY\n";
-            } else if (settings["bootloader"] == "rEFInd") {
+            } else if (settings["bootloader"].toString() == "rEFInd") {
                 out << "refind-install\n";
                 out << "mkdir -p /boot/efi/EFI/refind/refind.conf\n";
                 out << "cat > /boot/efi/EFI/refind/refind.conf << 'REFIND'\n";
                 out << "menuentry \"CachyOS Linux\" {\n";
                 out << "    icon     /EFI/refind/icons/os_arch.png\n";
-                out << "    loader   /vmlinuz-" << settings["kernel"] << "\n";
-                out << "    initrd   /initramfs-" << settings["kernel"] << ".img\n";
-                out << "    options  \"root=UUID=" << getDiskUuid(settings["targetDisk"] + "2") << " rootflags=subvol=@ rw\"\n";
+                out << "    loader   /vmlinuz-" << settings["kernel"].toString() << "\n";
+                out << "    initrd   /initramfs-" << settings["kernel"].toString() << ".img\n";
+                out << "    options  \"root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\"\n";
                 out << "}\n";
                 out << "REFIND\n";
             }
 
             // Handle initramfs
             out << "\n# Generate initramfs\n";
-            if (settings["initramfs"] == "mkinitcpio") {
+            if (settings["initramfs"].toString() == "mkinitcpio") {
                 out << "mkinitcpio -P\n";
-            } else if (settings["initramfs"] == "dracut") {
+            } else if (settings["initramfs"].toString() == "dracut") {
                 out << "dracut --regenerate-all --force\n";
-            } else if (settings["initramfs"] == "booster") {
+            } else if (settings["initramfs"].toString() == "booster") {
                 out << "booster generate\n";
-            } else if (settings["initramfs"] == "mkinitcpio-pico") {
+            } else if (settings["initramfs"].toString() == "mkinitcpio-pico") {
                 out << "mkinitcpio -P\n";
             }
 
             // Network manager (only enable if no desktop selected)
-            if (settings["desktopEnv"] == "None") {
+            if (settings["desktopEnv"].toString() == "None") {
                 out << "\n# Enable NetworkManager\n";
                 out << "systemctl enable NetworkManager\n";
             }
 
             // Install desktop environment and related packages
             out << "\n# Install desktop environment\n";
-            if (settings["desktopEnv"] == "KDE Plasma") {
-                out << "pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings\n";
+            if (settings["desktopEnv"].toString() == "KDE Plasma") {
+                out << "pacstrap /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings\n";
                 out << "systemctl enable sddm\n";
-                out << "pacman -S --noconfirm firefox dolphin konsole\n";
-            } else if (settings["desktopEnv"] == "GNOME") {
-                out << "pacman -S --noconfirm gnome gnome-extra gdm\n";
+                out << "pacstrap /mnt firefox dolphin konsole\n";
+            } else if (settings["desktopEnv"].toString() == "GNOME") {
+                out << "pacstrap /mnt gnome gnome-extra gdm\n";
                 out << "systemctl enable gdm\n";
-                out << "pacman -S --noconfirm firefox gnome-terminal\n";
-            } else if (settings["desktopEnv"] == "XFCE") {
-                out << "pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter\n";
+                out << "pacstrap /mnt firefox gnome-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "XFCE") {
+                out << "pacstrap /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox mousepad xfce4-terminal\n";
-            } else if (settings["desktopEnv"] == "MATE") {
-                out << "pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter\n";
+                out << "pacstrap /mnt firefox mousepad xfce4-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "MATE") {
+                out << "pacstrap /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox pluma mate-terminal\n";
-            } else if (settings["desktopEnv"] == "LXQt") {
-                out << "pacman -S --noconfirm lxqt breeze-icons sddm\n";
+                out << "pacstrap /mnt firefox pluma mate-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "LXQt") {
+                out << "pacstrap /mnt lxqt breeze-icons sddm\n";
                 out << "systemctl enable sddm\n";
-                out << "pacman -S --noconfirm firefox qterminal\n";
-            } else if (settings["desktopEnv"] == "Cinnamon") {
-                out << "pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter\n";
+                out << "pacstrap /mnt firefox qterminal\n";
+            } else if (settings["desktopEnv"].toString() == "Cinnamon") {
+                out << "pacstrap /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox xed gnome-terminal\n";
-            } else if (settings["desktopEnv"] == "Budgie") {
-                out << "pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter\n";
+                out << "pacstrap /mnt firefox xed gnome-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "Budgie") {
+                out << "pacstrap /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox gnome-text-editor gnome-terminal\n";
-            } else if (settings["desktopEnv"] == "Deepin") {
-                out << "pacman -S --noconfirm deepin deepin-extra lightdm\n";
+                out << "pacstrap /mnt firefox gnome-text-editor gnome-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "Deepin") {
+                out << "pacstrap /mnt deepin deepin-extra lightdm\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox deepin-terminal\n";
-            } else if (settings["desktopEnv"] == "i3") {
-                out << "pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter\n";
+                out << "pacstrap /mnt firefox deepin-terminal\n";
+            } else if (settings["desktopEnv"].toString() == "i3") {
+                out << "pacstrap /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox alacritty\n";
-            } else if (settings["desktopEnv"] == "Sway") {
-                out << "pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter\n";
+                out << "pacstrap /mnt firefox alacritty\n";
+            } else if (settings["desktopEnv"].toString() == "Sway") {
+                out << "pacstrap /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox foot\n";
-            } else if (settings["desktopEnv"] == "Hyprland") {
-                out << "pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter\n";
+                out << "pacstrap /mnt firefox foot\n";
+            } else if (settings["desktopEnv"].toString() == "Hyprland") {
+                out << "pacstrap /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox kitty\n";
+                out << "pacstrap /mnt firefox kitty\n";
                 
                 out << "# Create Hyprland config directory\n";
-                out << "mkdir -p /home/" << settings["username"] << "/.config/hypr\n";
-                out << "cat > /home/" << settings["username"] << "/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n";
+                out << "mkdir -p /home/" << settings["username"].toString() << "/.config/hypr\n";
+                out << "cat > /home/" << settings["username"].toString() << "/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n";
                 out << "# This is a basic Hyprland config\n";
                 out << "exec-once = waybar &\n";
                 out << "exec-once = swaybg -i ~/wallpaper.jpg &\n\n";
@@ -945,13 +948,13 @@ private slots:
                 out << "HYPRCONFIG\n";
                 
                 out << "# Set ownership of config files\n";
-                out << "chown -R " << settings["username"] << ":" << settings["username"] << " /home/" << settings["username"] << "/.config\n";
+                out << "chown -R " << settings["username"].toString() << ":" << settings["username"].toString() << " /home/" << settings["username"].toString() << "/.config\n";
             }
 
             // Install gaming meta if selected
             if (settings["gamingMeta"].toBool()) {
                 out << "\n# Install gaming packages\n";
-                out << "pacman -S --noconfirm cachyos-gaming-meta\n";
+                out << "pacstrap /mnt cachyos-gaming-meta\n";
             }
 
             // Enable TRIM for SSDs
@@ -992,8 +995,8 @@ private slots:
 
         connect(chrootButton, &QPushButton::clicked, [this, &dialog]() {
             logMessage("Entering chroot...");
-            QString disk1 = settings["targetDisk"] + "1";
-            QString disk2 = settings["targetDisk"] + "2";
+            QString disk1 = settings["targetDisk"].toString() + "1";
+            QString disk2 = settings["targetDisk"].toString() + "2";
 
             emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true);
             emit executeCommand("mount", {"-o", "subvol=@", disk2, "/mnt"}, true);
