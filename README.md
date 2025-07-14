@@ -1,3 +1,7 @@
+latest kernels are corrupt lol so we will be waiting a while now blame the testers
+
+
+
 <p align="center">
   <img src="https://i.postimg.cc/8CH1qgKV/cachyos.png">
 </p>
