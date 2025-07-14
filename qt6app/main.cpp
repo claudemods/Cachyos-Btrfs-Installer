@@ -107,14 +107,14 @@ public slots:
             QStringList fullArgs;
             fullArgs << "-S" << command;
             fullArgs += args;
-            
+
             process.start("sudo", fullArgs);
             if (!process.waitForStarted()) {
                 emit commandOutput("Failed to start sudo command\n");
                 emit commandFinished(false);
                 return;
             }
-            
+
             process.write((m_sudoPassword + "\n").toUtf8());
             process.closeWriteChannel();
         } else {
@@ -385,21 +385,21 @@ private slots:
         // Repository selection
         QGroupBox *repoGroup = new QGroupBox("Additional Repositories");
         QVBoxLayout *repoLayout = new QVBoxLayout;
-        
+
         QCheckBox *multilibCheck = new QCheckBox("Multilib");
         QCheckBox *testingCheck = new QCheckBox("Testing");
         QCheckBox *communityTestingCheck = new QCheckBox("Community Testing");
         QCheckBox *cachyosCheck = new QCheckBox("CachyOS");
         QCheckBox *cachyosV3Check = new QCheckBox("CachyOS V3");
         QCheckBox *cachyosTestingCheck = new QCheckBox("CachyOS Testing");
-        
+
         if (settings["repos"].toStringList().contains("multilib")) multilibCheck->setChecked(true);
         if (settings["repos"].toStringList().contains("testing")) testingCheck->setChecked(true);
         if (settings["repos"].toStringList().contains("community-testing")) communityTestingCheck->setChecked(true);
         if (settings["repos"].toStringList().contains("cachyos")) cachyosCheck->setChecked(true);
         if (settings["repos"].toStringList().contains("cachyos-v3")) cachyosV3Check->setChecked(true);
         if (settings["repos"].toStringList().contains("cachyos-testing")) cachyosTestingCheck->setChecked(true);
-        
+
         repoLayout->addWidget(multilibCheck);
         repoLayout->addWidget(testingCheck);
         repoLayout->addWidget(communityTestingCheck);
@@ -450,7 +450,7 @@ private slots:
             settings["initramfs"] = initramfsCombo->currentText();
             settings["compressionLevel"] = QString::number(compressionSpin->value());
             settings["gamingMeta"] = gamingCheck->isChecked();
-            
+
             // Save repository selections
             QStringList repos;
             if (multilibCheck->isChecked()) repos << "multilib";
@@ -542,17 +542,17 @@ private slots:
             "Continue?"
         ).arg(
             settings["targetDisk"].toString(),
-            settings["hostname"].toString(),
-            settings["timezone"].toString(),
-            settings["keymap"].toString(),
-            settings["username"].toString(),
-            settings["desktopEnv"].toString(),
-            settings["kernel"].toString(),
-            settings["bootloader"].toString(),
-            settings["initramfs"].toString(),
-            settings["compressionLevel"].toString(),
-            settings["gamingMeta"].toBool() ? "Yes" : "No",
-            settings["repos"].toStringList().join(", ")
+              settings["hostname"].toString(),
+              settings["timezone"].toString(),
+              settings["keymap"].toString(),
+              settings["username"].toString(),
+              settings["desktopEnv"].toString(),
+              settings["kernel"].toString(),
+              settings["bootloader"].toString(),
+              settings["initramfs"].toString(),
+              settings["compressionLevel"].toString(),
+              settings["gamingMeta"].toBool() ? "Yes" : "No",
+              settings["repos"].toStringList().join(", ")
         );
 
         QMessageBox::StandardButton reply;
@@ -595,12 +595,7 @@ private slots:
         QString compression = "zstd:" + settings["compressionLevel"].toString();
 
         switch (currentStep) {
-            case 1: // Install required tools
-                logMessage("Installing required tools...");
-                emit executeCommand("pacstrap", {"/mnt", "btrfs-progs", "parted", "dosfstools", "efibootmgr"}, true);
-                break;
-
-            case 2: // Partitioning
+            case 1: // Partitioning
                 logMessage("Partitioning disk...");
                 emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mklabel", "gpt"}, true);
                 emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "1MiB", "513MiB"}, true);
@@ -608,13 +603,13 @@ private slots:
                 emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "513MiB", "100%"}, true);
                 break;
 
-            case 3: // Formatting
+            case 2: // Formatting
                 logMessage("Formatting partitions...");
                 emit executeCommand("mkfs.vfat", {"-F32", disk1}, true);
                 emit executeCommand("mkfs.btrfs", {"-f", disk2}, true);
                 break;
 
-            case 4: // Mounting and subvolumes
+            case 3: // Create BTRFS subvolumes
                 logMessage("Creating BTRFS subvolumes...");
                 emit executeCommand("mount", {disk2, "/mnt"}, true);
                 emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@"}, true);
@@ -629,34 +624,34 @@ private slots:
                 emit executeCommand("umount", {"/mnt"}, true);
                 break;
 
-            case 5: // Remount with compression
-                logMessage("Remounting with compression...");
+            case 4: // Mount with compression
+                logMessage("Mounting with compression...");
                 emit executeCommand("mount", {"-o", QString("subvol=@,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt"}, true);
                 emit executeCommand("mkdir", {"-p", "/mnt/boot/efi"}, true);
                 emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true);
                 emit executeCommand("mkdir", {"-p", "/mnt/home"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/root"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/srv"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/tmp"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/var/cache"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/var/log"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/portables"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/machines"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@home,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/home"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/root"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@root,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/root"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/srv"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@srv,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/srv"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/tmp"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@tmp,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/tmp"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/log"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@log,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/log"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/cache"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@cache,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/cache"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/portables"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@/var/lib/portables,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/lib/portables"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/machines"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@/var/lib/machines,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/lib/machines"}, true);
                 break;
 
-            case 6: // Install base system with pacstrap
-                logMessage("Installing base system with pacstrap...");
+            case 5: // Install base system
+                logMessage("Installing base system...");
                 {
                     QStringList basePkgs = {"base", settings["kernel"].toString(), "linux-firmware", "btrfs-progs", "nano"};
-                    
+
                     // Add bootloader packages
                     if (settings["bootloader"].toString() == "GRUB") {
                         basePkgs << "grub" << "efibootmgr" << "dosfstools" << "cachyos-grub-theme";
@@ -665,10 +660,10 @@ private slots:
                     } else if (settings["bootloader"].toString() == "rEFInd") {
                         basePkgs << "refind";
                     }
-                    
+
                     // Add initramfs packages
                     basePkgs << settings["initramfs"].toString();
-                    
+
                     // Only add network manager if no desktop selected
                     if (settings["desktopEnv"].toString() == "None") {
                         basePkgs << "networkmanager";
@@ -683,23 +678,12 @@ private slots:
                     QStringList pacstrapArgs;
                     pacstrapArgs << "/mnt";
                     pacstrapArgs.append(basePkgs);
-                    
+
                     emit executeCommand("pacstrap", pacstrapArgs, true);
                 }
                 break;
 
-            case 7: // Enable selected repositories
-                logMessage("Enabling selected repositories...");
-                for (const QString &repo : settings["repos"].toStringList()) {
-                    if (repo == "cachyos" || repo == "cachyos-v3" || repo == "cachyos-testing") {
-                        // Import CachyOS key
-                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, true);
-                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--lsign-key", "F3B607488DB35A47"}, true);
-                    }
-                }
-                break;
-
-            case 8: // Generate fstab
+            case 6: // Generate fstab
                 logMessage("Generating fstab...");
                 {
                     QString rootUuid = getDiskUuid(disk2);
@@ -715,7 +699,7 @@ private slots:
                         "UUID=%1 /var/lib/portables btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/portables 0 0\n"
                         "UUID=%1 /var/lib/machines btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/machines 0 0\n"
                     ).arg(rootUuid, compression);
-                    
+
                     QTemporaryFile tempFile;
                     if (tempFile.open()) {
                         QTextStream out(&tempFile);
@@ -726,30 +710,41 @@ private slots:
                 }
                 break;
 
-            case 9: // Mount required filesystems for chroot
+            case 7: // Enable selected repositories
+                logMessage("Enabling selected repositories...");
+                for (const QString &repo : settings["repos"].toStringList()) {
+                    if (repo == "cachyos" || repo == "cachyos-v3" || repo == "cachyos-testing") {
+                        // Import CachyOS key
+                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, true);
+                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--lsign-key", "F3B607488DB35A47"}, true);
+                    }
+                }
+                break;
+
+            case 8: // Mount required filesystems for chroot
                 logMessage("Preparing chroot environment...");
                 emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true);
                 emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true);
                 emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true);
                 break;
 
-            case 10: // Create chroot setup script
+            case 9: // Create chroot setup script
                 logMessage("Preparing chroot setup script...");
                 createChrootScript();
                 emit executeCommand("chmod", {"+x", "/mnt/setup-chroot.sh"}, true);
                 break;
 
-            case 11: // Run chroot setup
+            case 10: // Run chroot setup
                 logMessage("Running chroot setup...");
                 emit executeCommand("arch-chroot", {"/mnt", "/setup-chroot.sh"}, true);
                 break;
 
-            case 12: // Clean up
+            case 11: // Clean up
                 logMessage("Cleaning up...");
                 emit executeCommand("umount", {"-R", "/mnt"}, true);
                 break;
 
-            case 13: // Installation complete
+            case 12: // Installation complete
                 logMessage("Installation complete!");
                 progressBar->setValue(100);
                 showPostInstallOptions();
@@ -892,7 +887,7 @@ private slots:
                 out << "pacstrap /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter\n";
                 out << "systemctl enable lightdm\n";
                 out << "pacstrap /mnt firefox kitty\n";
-                
+
                 out << "# Create Hyprland config directory\n";
                 out << "mkdir -p /home/" << settings["username"].toString() << "/.config/hypr\n";
                 out << "cat > /home/" << settings["username"].toString() << "/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n";
@@ -946,7 +941,7 @@ private slots:
                 out << "bind = SUPER, P, pseudo,\n";
                 out << "bind = SUPER, J, togglesplit,\n";
                 out << "HYPRCONFIG\n";
-                
+
                 out << "# Set ownership of config files\n";
                 out << "chown -R " << settings["username"].toString() << ":" << settings["username"].toString() << " /home/" << settings["username"].toString() << "/.config\n";
             }
