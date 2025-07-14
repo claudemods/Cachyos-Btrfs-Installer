@@ -1,4 +1,4 @@
 QT += widgets
 CONFIG += c++23
-TARGET = alpine-btrfs-installer
+TARGET = cachyos-btrfs-installer
 SOURCES += main.cpp
