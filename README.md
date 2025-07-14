@@ -1,5 +1,6 @@
-latest kernels are corrupt lol so we will be waiting a while now blame the testers
 
+
+latest script works no issues
 
 
 <p align="center">
