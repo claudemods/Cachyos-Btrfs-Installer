@@ -1,1 +1,3 @@
-<img width="1280" height="800" alt="Screenshot_archlinux-clone_2025-07-12_21:02:59" src="https://github.com/user-attachments/assets/62c2410a-cb20-4d52-834a-dade8a86f1b7" />
+<img width="1280" height="800" alt="app" src="https://github.com/user-attachments/assets/11781538-4e81-49cc-abe8-761392027b05" />
+
+<img width="1280" height="800" alt="stuff" src="https://github.com/user-attachments/assets/37576daf-7593-42be-8c52-94885b867fb0" />
