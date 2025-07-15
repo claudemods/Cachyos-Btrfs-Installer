@@ -69,16 +69,17 @@ class CommandRunner : public QObject {
     Q_OBJECT
 
 public:
-    explicit CommandRunner(QObject *parent = nullptr) : QObject(parent) {}
+    explicit CommandRunner(QObject *parent = nullptr) : QObject(parent), m_currentProgress(0) {}
     QString password() const { return m_sudoPassword; }
 
 signals:
     void commandStarted(const QString &command);
     void commandOutput(const QString &output);
     void commandFinished(bool success);
+    void progressUpdate(int value);
 
 public slots:
-    void runCommand(const QString &command, const QStringList &args = QStringList(), bool asRoot = false) {
+    void runCommand(const QString &command, const QStringList &args = QStringList(), bool asRoot = false, int progressWeight = 1) {
         QProcess process;
         process.setProcessChannelMode(QProcess::MergedChannels);
         QString fullCommand;
@@ -94,6 +95,7 @@ public slots:
             }
         }
         emit commandStarted(fullCommand);
+
         if (asRoot) {
             QStringList fullArgs;
             fullArgs << "-S" << command;
@@ -109,17 +111,23 @@ public slots:
         } else {
             process.start(command, args);
         }
+
         if (!process.waitForStarted()) {
             emit commandOutput("Failed to start command: " + fullCommand + "\n");
             emit commandFinished(false);
             return;
         }
+
         while (process.waitForReadyRead()) {
             QByteArray output = process.readAll();
             emit commandOutput(QString::fromUtf8(output));
         }
+
         process.waitForFinished();
+
         if (process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0) {
+            m_currentProgress += progressWeight;
+            emit progressUpdate(m_currentProgress);
             emit commandFinished(true);
         } else {
             emit commandOutput(QString("Command failed with exit code %1\n").arg(process.exitCode()));
@@ -132,8 +140,13 @@ public slots:
         m_sudoPassword.replace("'", "'\\''");
     }
 
+    void resetProgress() {
+        m_currentProgress = 0;
+    }
+
 private:
     QString m_sudoPassword;
+    int m_currentProgress;
 };
 
 class CachyOSInstaller : public QMainWindow {
@@ -173,7 +186,7 @@ public:
             "██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗<br>"
             "╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝<br>"
             "░╚════╝░╚══════╝╚═╝░░╚═╝░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░</span><br>"
-            "<span style='color:#00ffff;'>CachyOS Btrfs Installer v1.0</span></pre>"
+            "<span style='color:#00ffff;'>CachyOS Btrfs Installer v1.1</span></pre>"
         );
         titleLabel->setAlignment(Qt::AlignCenter);
         mainLayout->addWidget(titleLabel);
@@ -205,6 +218,13 @@ public:
         progressLayout->addWidget(logButton);
         mainLayout->addLayout(progressLayout);
 
+        // Hint label
+        hintLabel = new QLabel;
+        hintLabel->setStyleSheet("color: #00ffff; font-style: italic;");
+        hintLabel->setWordWrap(true);
+        hintLabel->setText("Hint: Select your installation options and click 'Configure Installation' to begin.");
+        mainLayout->addWidget(hintLabel);
+
         // Log area
         logArea = new QTextEdit;
         logArea->setReadOnly(true);
@@ -216,12 +236,12 @@ public:
         // Buttons
         QHBoxLayout *buttonLayout = new QHBoxLayout;
         QPushButton *configButton = new QPushButton("Configure Installation");
-        QPushButton *mirrorButton = new QPushButton("Find Fastest Mirrors");
+        QPushButton *mirrorButton = new QPushButton("Mirror Options");
         QPushButton *installButton = new QPushButton("Start Installation");
         QPushButton *exitButton = new QPushButton("Exit");
 
         connect(configButton, &QPushButton::clicked, this, &CachyOSInstaller::configureInstallation);
-        connect(mirrorButton, &QPushButton::clicked, this, &CachyOSInstaller::findFastestMirrors);
+        connect(mirrorButton, &QPushButton::clicked, this, &CachyOSInstaller::showMirrorOptions);
         connect(installButton, &QPushButton::clicked, this, &CachyOSInstaller::startInstallation);
         connect(exitButton, &QPushButton::clicked, qApp, &QApplication::quit);
 
@@ -246,6 +266,7 @@ public:
         connect(commandRunner, &CommandRunner::commandStarted, this, &CachyOSInstaller::logCommand);
         connect(commandRunner, &CommandRunner::commandOutput, this, &CachyOSInstaller::logOutput);
         connect(commandRunner, &CommandRunner::commandFinished, this, &CachyOSInstaller::commandCompleted);
+        connect(commandRunner, &CommandRunner::progressUpdate, this, &CachyOSInstaller::updateProgress);
         commandThread->start();
     }
 
@@ -257,11 +278,15 @@ public:
     }
 
 signals:
-    void executeCommand(const QString &command, const QStringList &args = QStringList(), bool asRoot = false);
+    void executeCommand(const QString &command, const QStringList &args = QStringList(), bool asRoot = false, int progressWeight = 1);
 
 private slots:
     void toggleLog() {
         logArea->setVisible(!logArea->isVisible());
+    }
+
+    void updateProgress(int value) {
+        progressBar->setValue(value);
     }
 
     void configureInstallation() {
@@ -276,6 +301,19 @@ private slots:
         QLineEdit *diskEdit = new QLineEdit(settings["targetDisk"].toString());
         diskEdit->setPlaceholderText("e.g. /dev/sda");
         leftForm->addRow("Target Disk:", diskEdit);
+
+        QPushButton *wipeButton = new QPushButton("Wipe Disk");
+        connect(wipeButton, &QPushButton::clicked, [this, diskEdit]() {
+            QMessageBox::StandardButton reply = QMessageBox::question(this, "Confirm Wipe",
+                                                                      "WARNING: This will erase ALL data on " + diskEdit->text() + "!\nAre you sure you want to continue?",
+                                                                      QMessageBox::Yes | QMessageBox::No);
+            if (reply == QMessageBox::Yes) {
+                logMessage("Wiping disk " + diskEdit->text() + "...");
+                emit executeCommand("wipefs", {"-a", diskEdit->text()}, true, 0);
+                logMessage("Disk wiped successfully.");
+            }
+        });
+        leftForm->addRow("Disk Operations:", wipeButton);
 
         QLineEdit *hostnameEdit = new QLineEdit(settings["hostname"].toString());
         hostnameEdit->setPlaceholderText("e.g. cachyos");
@@ -423,31 +461,127 @@ private slots:
             logMessage(QString("Initramfs: %1").arg(settings["initramfs"].toString()));
             logMessage(QString("Compression Level: %1").arg(settings["compressionLevel"].toString()));
             logMessage(QString("Gaming Meta: %1").arg(settings["gamingMeta"].toBool() ? "Yes" : "No"));
+
+            hintLabel->setText("<span style='color:#00ffff;'>Configuration saved. You can now start the installation or adjust mirror options.</span>");
         }
     }
 
-    void findFastestMirrors() {
-        QMessageBox::StandardButton reply;
-        reply = QMessageBox::question(this, "Fastest Mirrors",
-                                      "Would you like to find and use the fastest mirrors?",
-                                      QMessageBox::Yes | QMessageBox::No);
-        if (reply == QMessageBox::Yes) {
-            logMessage("Finding fastest mirrors...");
-            progressBar->setValue(10);
+    void showMirrorOptions() {
+        QDialog dialog(this);
+        dialog.setWindowTitle("Mirror Options");
+        QVBoxLayout *layout = new QVBoxLayout(&dialog);
 
-            // Install reflector if not present
-            emit executeCommand("pacstrap", {"/mnt", "reflector"}, true);
+        QGroupBox *mirrorGroup = new QGroupBox("Mirror Selection");
+        QVBoxLayout *mirrorLayout = new QVBoxLayout;
 
-            // Find and update mirrors
-            emit executeCommand("reflector", {"--latest", "20", "--protocol", "https", "--sort", "rate", "--save", "/etc/pacman.d/mirrorlist"}, true);
+        QCheckBox *archMirrors = new QCheckBox("Use Arch Linux mirrors");
+        archMirrors->setChecked(settings["useArchMirrors"].toBool());
 
-            progressBar->setValue(100);
-            QTimer::singleShot(1000, [this]() {
-                progressBar->setValue(0);
-            });
-        } else {
-            logMessage("Using default mirrors");
+        QCheckBox *cachyosMirrors = new QCheckBox("Use CachyOS mirrors");
+        cachyosMirrors->setChecked(settings["useCachyosMirrors"].toBool());
+
+        QCheckBox *fastestMirrors = new QCheckBox("Find and use fastest mirrors");
+        fastestMirrors->setChecked(settings["useFastestMirrors"].toBool());
+
+        QCheckBox *testingMirrors = new QCheckBox("Include testing repositories");
+        testingMirrors->setChecked(settings["useTestingMirrors"].toBool());
+
+        mirrorLayout->addWidget(archMirrors);
+        mirrorLayout->addWidget(cachyosMirrors);
+        mirrorLayout->addWidget(fastestMirrors);
+        mirrorLayout->addWidget(testingMirrors);
+        mirrorGroup->setLayout(mirrorLayout);
+        layout->addWidget(mirrorGroup);
+
+        QPushButton *applyButton = new QPushButton("Apply Mirror Configuration");
+        connect(applyButton, &QPushButton::clicked, [&]() {
+            settings["useArchMirrors"] = archMirrors->isChecked();
+            settings["useCachyosMirrors"] = cachyosMirrors->isChecked();
+            settings["useFastestMirrors"] = fastestMirrors->isChecked();
+            settings["useTestingMirrors"] = testingMirrors->isChecked();
+
+            if (fastestMirrors->isChecked()) {
+                updateMirrors();
+            } else {
+                configureStaticMirrors();
+            }
+
+            dialog.accept();
+        });
+
+        QDialogButtonBox buttonBox(QDialogButtonBox::Cancel, Qt::Horizontal, &dialog);
+        connect(&buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+        layout->addWidget(applyButton);
+        layout->addWidget(&buttonBox);
+
+        dialog.exec();
+    }
+
+    void updateMirrors() {
+        logMessage("Updating mirror list...");
+        hintLabel->setText("<span style='color:#00ffff;'>Updating mirror list, this may take a few minutes...</span>");
+
+        // Install reflector if not present
+        emit executeCommand("pacman", {"-Sy", "--noconfirm", "reflector"}, true, 5);
+
+        // Build reflector command
+        QStringList reflectorArgs;
+        reflectorArgs << "--latest" << "20" << "--protocol" << "https" << "--sort" << "rate";
+
+        if (settings["useArchMirrors"].toBool()) {
+            reflectorArgs << "--country" << "Global";
         }
+        if (settings["useCachyosMirrors"].toBool()) {
+            reflectorArgs << "--country" << "Germany";
+        }
+
+        reflectorArgs << "--save" << "/etc/pacman.d/mirrorlist";
+
+        emit executeCommand("reflector", reflectorArgs, true, 10);
+
+        if (settings["useTestingMirrors"].toBool()) {
+            QFile mirrorlist("/etc/pacman.d/mirrorlist");
+            if (mirrorlist.open(QIODevice::Append | QIODevice::Text)) {
+                QTextStream out(&mirrorlist);
+                out << "\n[testing]\n";
+                out << "Include = /etc/pacman.d/mirrorlist\n";
+                mirrorlist.close();
+            }
+        }
+
+        logMessage("Mirror list updated successfully.");
+        hintLabel->setText("<span style='color:#00ffff;'>Mirror configuration updated successfully.</span>");
+    }
+
+    void configureStaticMirrors() {
+        logMessage("Configuring static mirrors...");
+
+        QFile mirrorlist("/etc/pacman.d/mirrorlist");
+        if (mirrorlist.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&mirrorlist);
+
+            if (settings["useArchMirrors"].toBool()) {
+                out << "## Arch Linux repositories\n";
+                out << "Server = https://mirrors.kernel.org/archlinux/$repo/os/$arch\n";
+                out << "Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch\n";
+            }
+
+            if (settings["useCachyosMirrors"].toBool()) {
+                out << "\n## CachyOS repositories\n";
+                out << "Server = https://mirror.cachyos.org/repo/$arch/$repo\n";
+            }
+
+            if (settings["useTestingMirrors"].toBool()) {
+                out << "\n[testing]\n";
+                out << "Include = /etc/pacman.d/mirrorlist\n";
+            }
+
+            mirrorlist.close();
+        }
+
+        logMessage("Static mirror configuration applied.");
+        hintLabel->setText("<span style='color:#00ffff;'>Static mirror configuration applied.</span>");
     }
 
     void startInstallation() {
@@ -485,7 +619,7 @@ private slots:
             "Bootloader: %8\n"
             "Initramfs: %9\n"
             "Compression Level: %10\n"
-            "Gaming Meta: %11\n"
+            "Gaming Meta: %11\n\n"
             "Continue?")
         .arg(settings["targetDisk"].toString(),
              settings["hostname"].toString(),
@@ -517,9 +651,11 @@ private slots:
 
         // Set sudo password for command runner
         commandRunner->setSudoPassword(passDialog.password());
+        commandRunner->resetProgress();
 
         // Start installation process
         logMessage("Starting CachyOS BTRFS installation...");
+        hintLabel->setText("<span style='color:#00ffff;'>Installation in progress. Please wait...</span>");
         progressBar->setValue(5);
 
         // Begin installation steps
@@ -540,29 +676,29 @@ private slots:
         switch (currentStep) {
             case 1: // Partitioning
                 logMessage("Partitioning disk...");
-                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mklabel", "gpt"}, true);
-                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "1MiB", "513MiB"}, true);
-                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "set", "1", "esp", "on"}, true);
-                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "513MiB", "100%"}, true);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mklabel", "gpt"}, true, 5);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "1MiB", "513MiB"}, true, 5);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "set", "1", "esp", "on"}, true, 5);
+                emit executeCommand("parted", {"-s", settings["targetDisk"].toString(), "mkpart", "primary", "513MiB", "100%"}, true, 5);
                 break;
 
             case 2: // Formatting
                 logMessage("Formatting partitions...");
-                emit executeCommand("mkfs.vfat", {"-F32", disk1}, true);
-                emit executeCommand("mkfs.btrfs", {"-f", disk2}, true);
+                emit executeCommand("mkfs.vfat", {"-F32", disk1}, true, 5);
+                emit executeCommand("mkfs.btrfs", {"-f", disk2}, true, 5);
                 break;
 
             case 3: // Create BTRFS subvolumes
                 logMessage("Creating BTRFS subvolumes...");
-                emit executeCommand("mount", {disk2, "/mnt"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@home"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@root"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@srv"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@tmp"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@log"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@cache"}, true);
-                emit executeCommand("umount", {"/mnt"}, true);
+                emit executeCommand("mount", {disk2, "/mnt"}, true, 2);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@"}, true, 2);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@home"}, true, 2);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@root"}, true, 2);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@srv"}, true, 2);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@tmp"}, true, 2);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@log"}, true, 2);
+                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@cache"}, true, 2);
+                emit executeCommand("umount", {"/mnt"}, true, 2);
                 break;
 
             case 4: // Mount with compression
@@ -586,85 +722,48 @@ private slots:
                 emit executeCommand("mount", {"-o", QString("subvol=@cache,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/cache"}, true);
                 break;
 
-            case 5: // Install base system
-                logMessage("Installing base system...");
-                {
-                    QStringList basePkgs = {"base", settings["kernel"].toString(), "linux-firmware", "btrfs-progs", "nano"};
-
-                    // Add bootloader packages
-                    if (settings["bootloader"].toString() == "GRUB") {
-                        basePkgs << "grub" << "efibootmgr" << "dosfstools" << "cachyos-grub-theme";
-                    } else if (settings["bootloader"].toString() == "systemd-boot") {
-                        basePkgs << "efibootmgr";
-                    } else if (settings["bootloader"].toString() == "rEFInd") {
-                        basePkgs << "refind";
-                    }
-
-                    // Add initramfs packages
-                    basePkgs << settings["initramfs"].toString();
-
-                    // Only add network manager if no desktop selected
-                    if (settings["desktopEnv"].toString() == "None") {
-                        basePkgs << "networkmanager";
-                    }
-
-                    // Add gaming meta if selected
-                    if (settings["gamingMeta"].toBool()) {
-                        basePkgs << "cachyos-gaming-meta";
-                    }
-
-                    // Build the pacstrap command
-                    QStringList pacstrapArgs;
-                    pacstrapArgs << "/mnt";
-                    pacstrapArgs.append(basePkgs);
-                    emit executeCommand("pacstrap", pacstrapArgs, true);
-                }
-                break;
-
             case 6: // Generate fstab
                 logMessage("Generating fstab...");
-                emit executeCommand("cp", {"btrfsfstabcompressed.sh", "/mnt/btrfsfstabcompressed.sh"}, true);
-                emit executeCommand("chmod", {"+x", "/mnt/btrfsfstabcompressed.sh"}, true);
-                emit executeCommand("arch-chroot", {"/mnt", "/bin/bash", "-c", "./btrfsfstabcompressed.sh"}, true);
+                emit executeCommand("cp", {"btrfsfstabcompressed.sh", "/mnt/btrfsfstabcompressed.sh"}, true, 2);
+                emit executeCommand("chmod", {"+x", "/mnt/btrfsfstabcompressed.sh"}, true, 1);
+                emit executeCommand("arch-chroot", {"/mnt", "./btrfsfstabcompressed.sh"}, true, 5);
                 break;
 
             case 7: // Enable selected repositories
                 logMessage("Enabling selected repositories...");
-                for (const QString &repo : settings["repos"].toStringList()) {
-                    if (repo == "cachyos" || repo == "cachyos-v3" || repo == "cachyos-testing") {
-                        // Import CachyOS key
-                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, true);
-                        emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--lsign-key", "F3B607488DB35A47"}, true);
-                    }
+                if (settings["useCachyosMirrors"].toBool()) {
+                    emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, true, 2);
+                    emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--lsign-key", "F3B607488DB35A47"}, true, 2);
                 }
                 break;
 
             case 8: // Mount required filesystems for chroot
                 logMessage("Preparing chroot environment...");
-                emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true);
-                emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true);
-                emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true);
+                emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true, 1);
+                emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true, 1);
+                emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true, 1);
                 break;
 
             case 9: // Create chroot setup script
                 logMessage("Preparing chroot setup script...");
                 createChrootScript();
-                emit executeCommand("chmod", {"+x", "/mnt/setup-chroot.sh"}, true);
+                emit executeCommand("chmod", {"+x", "/mnt/setup-chroot.sh"}, true, 1);
                 break;
 
             case 10: // Run chroot setup
                 logMessage("Running chroot setup...");
-                emit executeCommand("arch-chroot", {"/mnt", "/bin/bash", "-c", "./setup-chroot.sh"}, true);
+                emit executeCommand("arch-chroot", {"/mnt", "./setup-chroot.sh"}, true, 20);
                 break;
 
             case 11: // Clean up
                 logMessage("Cleaning up...");
-                emit executeCommand("umount", {"-R", "/mnt"}, true);
+                emit executeCommand("umount", {"-R", "/mnt"}, true, 5);
                 break;
 
             case 12: // Installation complete
                 logMessage("Installation complete!");
                 progressBar->setValue(100);
+                hintLabel->setText("<span style='color:#00ffff;'>Installation complete! Select post-install options.</span>");
                 showPostInstallOptions();
                 break;
 
@@ -678,6 +777,7 @@ private slots:
             logMessage("ERROR: Command failed!");
             QMessageBox::critical(this, "Error", "A command failed during installation. Check the log for details.");
             progressBar->setValue(0);
+            hintLabel->setText("<span style='color:#ff0000;'>Installation failed! Check the log for details.</span>");
             return;
         }
 
@@ -905,14 +1005,14 @@ private slots:
             logMessage("Entering chroot...");
             QString disk1 = settings["targetDisk"].toString() + "1";
             QString disk2 = settings["targetDisk"].toString() + "2";
-            emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true);
-            emit executeCommand("mount", {"-o", "subvol=@", disk2, "/mnt"}, true);
-            emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true);
-            emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true);
-            emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true);
-            emit executeCommand("mount", {"--rbind", "/dev/pts", "/mnt/dev/pts"}, true);
-            emit executeCommand("arch-chroot", {"/mnt", "/bin/bash"}, true);
-            emit executeCommand("umount", {"-l", "/mnt"}, true);
+            emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true, 0);
+            emit executeCommand("mount", {"-o", "subvol=@", disk2, "/mnt"}, true, 0);
+            emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true, 0);
+            emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true, 0);
+            emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true, 0);
+            emit executeCommand("mount", {"--rbind", "/dev/pts", "/mnt/dev/pts"}, true, 0);
+            emit executeCommand("arch-chroot", {"/mnt"}, true, 0);
+            emit executeCommand("umount", {"-l", "/mnt"}, true, 0);
             dialog.accept();
         });
 
@@ -959,11 +1059,15 @@ private:
         settings["rootPassword"] = "";
         settings["userPassword"] = "";
         settings["gamingMeta"] = false;
-        settings["repos"] = QStringList();
+        settings["useArchMirrors"] = true;
+        settings["useCachyosMirrors"] = true;
+        settings["useFastestMirrors"] = false;
+        settings["useTestingMirrors"] = false;
     }
 
     QProgressBar *progressBar;
     QTextEdit *logArea;
+    QLabel *hintLabel;
     QMap<QString, QVariant> settings;
     int currentStep;
     int totalSteps;
