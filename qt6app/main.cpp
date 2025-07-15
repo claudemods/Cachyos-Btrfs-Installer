@@ -804,14 +804,15 @@ private slots:
                 logMessage("Generating fstab...");
                 emit executeCommand("cp", {"btrfsfstabcompressed.sh", "/mnt/btrfsfstabcompressed.sh"}, true, 2);
                 emit executeCommand("chmod", {"+x", "/mnt/btrfsfstabcompressed.sh"}, true, 1);
-                emit executeCommand("arch-chroot", {"/mnt", "./btrfsfstabcompressed.sh"}, true, 5);
+                emit executeCommand("chroot", {"/mnt"}, true, 5);
+                emit executeCommand("./setup-chroot.sh"}, true, 20);
                 break;
 
             case 7: // Enable selected repositories
                 logMessage("Enabling selected repositories...");
                 if (settings["cachyosCore"].toBool() || settings["cachyosV3"].toBool() || settings["cachyosTesting"].toBool()) {
                     emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, true, 2);
-                    emit executeCommand("arch-chroot", {"/mnt", "pacman-key", "--lsign-key", "F3B607488DB35A47"}, true, 2);
+                    emit executeCommand("chroot", {"/mnt", "pacman-key", "--lsign-key", "F3B607488DB35A47"}, true, 2);
                 }
                 break;
 
@@ -830,7 +831,8 @@ private slots:
 
             case 10: // Run chroot setup
                 logMessage("Running chroot setup...");
-                emit executeCommand("arch-chroot", {"/mnt", "./setup-chroot.sh"}, true, 20);
+                emit executeCommand("chroot", {"/mnt"}, true, 20);
+                emit executeCommand("./setup-chroot.sh"}, true, 20);
                 break;
 
             case 11: // Clean up
