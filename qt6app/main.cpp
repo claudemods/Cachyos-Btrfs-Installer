@@ -801,11 +801,10 @@ private slots:
                 break;
 
             case 6: // Generate fstab
-                logMessage("Generating fstab...");
+                logMessage("copy files...");
                 emit executeCommand("cp", {"btrfsfstabcompressed.sh", "/mnt/btrfsfstabcompressed.sh"}, true, 2);
+                emit executeCommand("cp", {"setup-chroot.sh", "/mnt/setup-chroot.sh"}, true, 2);
                 emit executeCommand("chmod", {"+x", "/mnt/btrfsfstabcompressed.sh"}, true, 1);
-                emit executeCommand("chroot", {"/mnt"}, true, 5);
-                emit executeCommand("./setup-chroot.sh"}, true, 20);
                 break;
 
             case 7: // Enable selected repositories
@@ -818,21 +817,36 @@ private slots:
 
             case 8: // Mount required filesystems for chroot
                 logMessage("Preparing chroot environment...");
+
+                break;
+
+            case 9:
+            {
+                QString disk = settings["targetDisk"].toString(); // e.g. /dev/nvme0n1
+
+                // 1. Mount partitions
+                emit executeCommand("mount", {disk + "1", "/mnt/boot/efi"}, true, 1);
+                emit executeCommand("mount", {"-o", "subvol=@", disk + "2", "/mnt"}, true, 1);
                 emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true, 1);
                 emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true, 1);
                 emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true, 1);
-                break;
+                emit executeCommand("mount", {"--rbind", "/dev/pts", "/mnt/dev/pts"}, true, 1);
 
-            case 9: // Create chroot setup script
-                logMessage("Preparing chroot setup script...");
-                createChrootScript();
+                // 2. Copy and prepare scripts
+                emit executeCommand("cp", {"btrfsfstabcompressed.sh", "/mnt/"}, true, 1);
+                emit executeCommand("cp", {"setup-chroot.sh", "/mnt/"}, true, 1);
+                emit executeCommand("chmod", {"+x", "/mnt/btrfsfstabcompressed.sh"}, true, 1);
                 emit executeCommand("chmod", {"+x", "/mnt/setup-chroot.sh"}, true, 1);
+
+                // 3. Execute main setup script
+                emit executeCommand("arch-chroot", {"/mnt", "./btrfsfstabcompressed.sh"}, true, 20);
+                emit executeCommand("arch-chroot", {"/mnt", "./setup-chroot.sh"}, true, 20);
                 break;
+            }
+
 
             case 10: // Run chroot setup
-                logMessage("Running chroot setup...");
-                emit executeCommand("chroot", {"/mnt"}, true, 20);
-                emit executeCommand("./setup-chroot.sh"}, true, 20);
+                logMessage("Finished");
                 break;
 
             case 11: // Clean up
@@ -849,280 +863,280 @@ private slots:
 
             default:
                 break;
+}
+}
+
+void commandCompleted(bool success) {
+    if (!success) {
+        logMessage("ERROR: Command failed!");
+        QMessageBox::critical(this, "Error", "A command failed during installation. Check the log for details.");
+        progressBar->setValue(0);
+        hintLabel->setText("<span style='color:#ff0000;'>Installation failed! Check the log for details.</span>");
+        return;
+    }
+
+    // Proceed to next step
+    QTimer::singleShot(500, this, &CachyOSInstaller::nextInstallationStep);
+}
+
+void createChrootScript() {
+    QFile scriptFile("/mnt/setup-chroot.sh");
+    if (scriptFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&scriptFile);
+        out << "#!/bin/bash\n";
+        out << "# Basic system configuration\n";
+        out << "echo \"" << settings["hostname"].toString() << "\" > /etc/hostname\n";
+        out << "ln -sf /usr/share/zoneinfo/" << settings["timezone"].toString() << " /etc/localtime\n";
+        out << "hwclock --systohc\n";
+        out << "echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen\n";
+        out << "locale-gen\n";
+        out << "echo \"LANG=en_US.UTF-8\" > /etc/locale.conf\n";
+        out << "echo \"KEYMAP=" << settings["keymap"].toString() << "\" > /etc/vconsole.conf\n";
+        out << "# Users and passwords\n";
+        out << "echo \"root:" << settings["rootPassword"].toString() << "\" | chpasswd\n";
+        out << "useradd -m -G wheel,audio,video,storage,optical -s /bin/bash " << settings["username"].toString() << "\n";
+        out << "echo \"" << settings["username"].toString() << ":" << settings["userPassword"].toString() << "\" | chpasswd\n";
+        out << "# Configure sudo\n";
+        out << "echo \"%wheel ALL=(ALL) ALL\" > /etc/sudoers.d/wheel\n";
+
+        // Handle bootloader installation
+        out << "# Install bootloader\n";
+        if (settings["bootloader"].toString() == "GRUB") {
+            out << "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=CachyOS\n";
+            out << "grub-mkconfig -o /boot/grub/grub.cfg\n";
+        } else if (settings["bootloader"].toString() == "systemd-boot") {
+            out << "bootctl --path=/boot/efi install\n";
+            out << "mkdir -p /boot/efi/loader/entries\n";
+            out << "cat > /boot/efi/loader/loader.conf << 'LOADER'\n";
+            out << "default arch\n";
+            out << "timeout 3\n";
+            out << "editor  yes\n";
+            out << "LOADER\n";
+            out << "cat > /boot/efi/loader/entries/arch.conf << 'ENTRY'\n";
+            out << "title   CachyOS Linux\n";
+            out << "linux   /vmlinuz-" << settings["kernel"].toString() << "\n";
+            out << "initrd  /initramfs-" << settings["kernel"].toString() << ".img\n";
+            out << "options root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\n";
+            out << "ENTRY\n";
+        } else if (settings["bootloader"].toString() == "rEFInd") {
+            out << "refind-install\n";
+            out << "mkdir -p /boot/efi/EFI/refind/refind.conf\n";
+            out << "cat > /boot/efi/EFI/refind/refind.conf << 'REFIND'\n";
+            out << "menuentry \"CachyOS Linux\" {\n";
+            out << "    icon     /EFI/refind/icons/os_arch.png\n";
+            out << "    loader   /vmlinuz-" << settings["kernel"].toString() << "\n";
+            out << "    initrd   /initramfs-" << settings["kernel"].toString() << ".img\n";
+            out << "    options  \"root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\"\n";
+            out << "}\n";
+            out << "REFIND\n";
         }
-    }
 
-    void commandCompleted(bool success) {
-        if (!success) {
-            logMessage("ERROR: Command failed!");
-            QMessageBox::critical(this, "Error", "A command failed during installation. Check the log for details.");
-            progressBar->setValue(0);
-            hintLabel->setText("<span style='color:#ff0000;'>Installation failed! Check the log for details.</span>");
-            return;
+        // Handle initramfs
+        out << "\n# Generate initramfs\n";
+        if (settings["initramfs"].toString() == "mkinitcpio") {
+            out << "mkinitcpio -P\n";
+        } else if (settings["initramfs"].toString() == "dracut") {
+            out << "dracut --regenerate-all --force\n";
+        } else if (settings["initramfs"].toString() == "booster") {
+            out << "booster generate\n";
+        } else if (settings["initramfs"].toString() == "mkinitcpio-pico") {
+            out << "mkinitcpio -P\n";
         }
 
-        // Proceed to next step
-        QTimer::singleShot(500, this, &CachyOSInstaller::nextInstallationStep);
-    }
-
-    void createChrootScript() {
-        QFile scriptFile("/mnt/setup-chroot.sh");
-        if (scriptFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QTextStream out(&scriptFile);
-            out << "#!/bin/bash\n";
-            out << "# Basic system configuration\n";
-            out << "echo \"" << settings["hostname"].toString() << "\" > /etc/hostname\n";
-            out << "ln -sf /usr/share/zoneinfo/" << settings["timezone"].toString() << " /etc/localtime\n";
-            out << "hwclock --systohc\n";
-            out << "echo \"en_US.UTF-8 UTF-8\" >> /etc/locale.gen\n";
-            out << "locale-gen\n";
-            out << "echo \"LANG=en_US.UTF-8\" > /etc/locale.conf\n";
-            out << "echo \"KEYMAP=" << settings["keymap"].toString() << "\" > /etc/vconsole.conf\n";
-            out << "# Users and passwords\n";
-            out << "echo \"root:" << settings["rootPassword"].toString() << "\" | chpasswd\n";
-            out << "useradd -m -G wheel,audio,video,storage,optical -s /bin/bash " << settings["username"].toString() << "\n";
-            out << "echo \"" << settings["username"].toString() << ":" << settings["userPassword"].toString() << "\" | chpasswd\n";
-            out << "# Configure sudo\n";
-            out << "echo \"%wheel ALL=(ALL) ALL\" > /etc/sudoers.d/wheel\n";
-
-            // Handle bootloader installation
-            out << "# Install bootloader\n";
-            if (settings["bootloader"].toString() == "GRUB") {
-                out << "grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=CachyOS\n";
-                out << "grub-mkconfig -o /boot/grub/grub.cfg\n";
-            } else if (settings["bootloader"].toString() == "systemd-boot") {
-                out << "bootctl --path=/boot/efi install\n";
-                out << "mkdir -p /boot/efi/loader/entries\n";
-                out << "cat > /boot/efi/loader/loader.conf << 'LOADER'\n";
-                out << "default arch\n";
-                out << "timeout 3\n";
-                out << "editor  yes\n";
-                out << "LOADER\n";
-                out << "cat > /boot/efi/loader/entries/arch.conf << 'ENTRY'\n";
-                out << "title   CachyOS Linux\n";
-                out << "linux   /vmlinuz-" << settings["kernel"].toString() << "\n";
-                out << "initrd  /initramfs-" << settings["kernel"].toString() << ".img\n";
-                out << "options root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\n";
-                out << "ENTRY\n";
-            } else if (settings["bootloader"].toString() == "rEFInd") {
-                out << "refind-install\n";
-                out << "mkdir -p /boot/efi/EFI/refind/refind.conf\n";
-                out << "cat > /boot/efi/EFI/refind/refind.conf << 'REFIND'\n";
-                out << "menuentry \"CachyOS Linux\" {\n";
-                out << "    icon     /EFI/refind/icons/os_arch.png\n";
-                out << "    loader   /vmlinuz-" << settings["kernel"].toString() << "\n";
-                out << "    initrd   /initramfs-" << settings["kernel"].toString() << ".img\n";
-                out << "    options  \"root=UUID=" << getDiskUuid(settings["targetDisk"].toString() + "2") << " rootflags=subvol=@ rw\"\n";
-                out << "}\n";
-                out << "REFIND\n";
-            }
-
-            // Handle initramfs
-            out << "\n# Generate initramfs\n";
-            if (settings["initramfs"].toString() == "mkinitcpio") {
-                out << "mkinitcpio -P\n";
-            } else if (settings["initramfs"].toString() == "dracut") {
-                out << "dracut --regenerate-all --force\n";
-            } else if (settings["initramfs"].toString() == "booster") {
-                out << "booster generate\n";
-            } else if (settings["initramfs"].toString() == "mkinitcpio-pico") {
-                out << "mkinitcpio -P\n";
-            }
-
-            // Network manager (only enable if no desktop selected)
-            if (settings["desktopEnv"].toString() == "None") {
-                out << "\n# Enable NetworkManager\n";
-                out << "systemctl enable NetworkManager\n";
-            }
-
-            // Install desktop environment and related packages
-            out << "\n# Install desktop environment\n";
-            if (settings["desktopEnv"].toString() == "KDE Plasma") {
-                out << "pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings --disable-download-timeout\n";
-                out << "systemctl enable sddm\n";
-                out << "pacman -S --noconfirm firefox dolphin konsole --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "GNOME") {
-                out << "pacman -S --noconfirm gnome gnome-extra gdm --disable-download-timeout\n";
-                out << "systemctl enable gdm\n";
-                out << "pacman -S --noconfirm firefox gnome-terminal --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "XFCE") {
-                out << "pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox mousepad xfce4-terminal --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "MATE") {
-                out << "pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox pluma mate-terminal --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "LXQt") {
-                out << "pacman -S --noconfirm lxqt breeze-icons sddm --disable-download-timeout\n";
-                out << "systemctl enable sddm\n";
-                out << "pacman -S --noconfirm firefox qterminal --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "Cinnamon") {
-                out << "pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox xed gnome-terminal --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "Budgie") {
-                out << "pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox gnome-text-editor gnome-terminal --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "Deepin") {
-                out << "pacman -S --noconfirm deepin deepin-extra lightdm --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox deepin-terminal --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "i3") {
-                out << "pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox alacritty --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "Sway") {
-                out << "pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox foot --disable-download-timeout\n";
-            } else if (settings["desktopEnv"].toString() == "Hyprland") {
-                out << "pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --disable-download-timeout\n";
-                out << "systemctl enable lightdm\n";
-                out << "pacman -S --noconfirm firefox kitty --disable-download-timeout\n";
-
-                // Create Hyprland config directory
-                out << "# Create Hyprland config directory\n";
-                out << "mkdir -p /home/" << settings["username"].toString() << "/.config/hypr\n";
-                out << "cat > /home/" << settings["username"].toString() << "/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n";
-                out << "# This is a basic Hyprland config\n";
-                out << "exec-once = waybar &\n";
-                out << "exec-once = swaybg -i ~/wallpaper.jpg &\n";
-                out << "monitor=,preferred,auto,1\n";
-                out << "input {\n";
-                out << "    kb_layout = us\n";
-                out << "    follow_mouse = 1\n";
-                out << "    touchpad {\n";
-                out << "        natural_scroll = yes\n";
-                out << "    }\n";
-                out << "}\n";
-                out << "general {\n";
-                out << "    gaps_in = 5\n";
-                out << "    gaps_out = 10\n";
-                out << "    border_size = 2\n";
-                out << "    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg\n";
-                out << "    col.inactive_border = rgba(595959aa)\n";
-                out << "}\n";
-                out << "decoration {\n";
-                out << "    rounding = 5\n";
-                out << "    blur = yes\n";
-                out << "    blur_size = 3\n";
-                out << "    blur_passes = 1\n";
-                out << "    blur_new_optimizations = on\n";
-                out << "}\n";
-                out << "animations {\n";
-                out << "    enabled = yes\n";
-                out << "    bezier = myBezier, 0.05, 0.9, 0.1, 1.05\n";
-                out << "    animation = windows, 1, 7, myBezier\n";
-                out << "    animation = windowsOut, 1, 7, default, popin 80%\n";
-                out << "    animation = border, 1, 10, default\n";
-                out << "    animation = fade, 1, 7, default\n";
-                out << "    animation = workspaces, 1, 6, default\n";
-                out << "}\n";
-                out << "dwindle {\n";
-                out << "    pseudotile = yes\n";
-                out << "    preserve_split = yes\n";
-                out << "}\n";
-                out << "master {\n";
-                out << "    new_is_master = true\n";
-                out << "}\n";
-                out << "bind = SUPER, Return, exec, kitty\n";
-                out << "bind = SUPER, Q, killactive,\n";
-                out << "bind = SUPER, M, exit,\n";
-                out << "bind = SUPER, V, togglefloating,\n";
-                out << "bind = SUPER, F, fullscreen,\n";
-                out << "bind = SUPER, D, exec, rofi -show drun\n";
-                out << "bind = SUPER, P, pseudo,\n";
-                out << "bind = SUPER, J, togglesplit,\n";
-                out << "HYPRCONFIG\n";
-
-                // Set ownership of config files
-                out << "# Set ownership of config files\n";
-                out << "chown -R " << settings["username"].toString() << ":" << settings["username"].toString()
-                << " /home/" << settings["username"].toString() << "/.config\n";
-            }
-
-            // Install gaming meta if selected
-            if (settings["gamingMeta"].toBool()) {
-                out << "\n# Install gaming packages\n";
-                out << "pacman -S --noconfirm cachyos-gaming-meta\n";
-            }
-
-            // Enable TRIM for SSDs
-            out << "\n# Enable TRIM\n";
-            out << "systemctl enable fstrim.timer\n";
-
-            // Clean up
-            out << "\n# Clean up\n";
-            out << "rm /setup-chroot.sh\n";
-
-            scriptFile.close();
+        // Network manager (only enable if no desktop selected)
+        if (settings["desktopEnv"].toString() == "None") {
+            out << "\n# Enable NetworkManager\n";
+            out << "systemctl enable NetworkManager\n";
         }
+
+        // Install desktop environment and related packages
+        out << "\n# Install desktop environment\n";
+        if (settings["desktopEnv"].toString() == "KDE Plasma") {
+            out << "pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings --disable-download-timeout\n";
+            out << "systemctl enable sddm\n";
+            out << "pacman -S --noconfirm firefox dolphin konsole --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "GNOME") {
+            out << "pacman -S --noconfirm gnome gnome-extra gdm --disable-download-timeout\n";
+            out << "systemctl enable gdm\n";
+            out << "pacman -S --noconfirm firefox gnome-terminal --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "XFCE") {
+            out << "pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox mousepad xfce4-terminal --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "MATE") {
+            out << "pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox pluma mate-terminal --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "LXQt") {
+            out << "pacman -S --noconfirm lxqt breeze-icons sddm --disable-download-timeout\n";
+            out << "systemctl enable sddm\n";
+            out << "pacman -S --noconfirm firefox qterminal --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "Cinnamon") {
+            out << "pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox xed gnome-terminal --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "Budgie") {
+            out << "pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox gnome-text-editor gnome-terminal --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "Deepin") {
+            out << "pacman -S --noconfirm deepin deepin-extra lightdm --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox deepin-terminal --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "i3") {
+            out << "pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox alacritty --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "Sway") {
+            out << "pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox foot --disable-download-timeout\n";
+        } else if (settings["desktopEnv"].toString() == "Hyprland") {
+            out << "pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --disable-download-timeout\n";
+            out << "systemctl enable lightdm\n";
+            out << "pacman -S --noconfirm firefox kitty --disable-download-timeout\n";
+
+            // Create Hyprland config directory
+            out << "# Create Hyprland config directory\n";
+            out << "mkdir -p /home/" << settings["username"].toString() << "/.config/hypr\n";
+            out << "cat > /home/" << settings["username"].toString() << "/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n";
+            out << "# This is a basic Hyprland config\n";
+            out << "exec-once = waybar &\n";
+            out << "exec-once = swaybg -i ~/wallpaper.jpg &\n";
+            out << "monitor=,preferred,auto,1\n";
+            out << "input {\n";
+            out << "    kb_layout = us\n";
+            out << "    follow_mouse = 1\n";
+            out << "    touchpad {\n";
+            out << "        natural_scroll = yes\n";
+            out << "    }\n";
+            out << "}\n";
+            out << "general {\n";
+            out << "    gaps_in = 5\n";
+            out << "    gaps_out = 10\n";
+            out << "    border_size = 2\n";
+            out << "    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg\n";
+            out << "    col.inactive_border = rgba(595959aa)\n";
+            out << "}\n";
+            out << "decoration {\n";
+            out << "    rounding = 5\n";
+            out << "    blur = yes\n";
+            out << "    blur_size = 3\n";
+            out << "    blur_passes = 1\n";
+            out << "    blur_new_optimizations = on\n";
+            out << "}\n";
+            out << "animations {\n";
+            out << "    enabled = yes\n";
+            out << "    bezier = myBezier, 0.05, 0.9, 0.1, 1.05\n";
+            out << "    animation = windows, 1, 7, myBezier\n";
+            out << "    animation = windowsOut, 1, 7, default, popin 80%\n";
+            out << "    animation = border, 1, 10, default\n";
+            out << "    animation = fade, 1, 7, default\n";
+            out << "    animation = workspaces, 1, 6, default\n";
+            out << "}\n";
+            out << "dwindle {\n";
+            out << "    pseudotile = yes\n";
+            out << "    preserve_split = yes\n";
+            out << "}\n";
+            out << "master {\n";
+            out << "    new_is_master = true\n";
+            out << "}\n";
+            out << "bind = SUPER, Return, exec, kitty\n";
+            out << "bind = SUPER, Q, killactive,\n";
+            out << "bind = SUPER, M, exit,\n";
+            out << "bind = SUPER, V, togglefloating,\n";
+            out << "bind = SUPER, F, fullscreen,\n";
+            out << "bind = SUPER, D, exec, rofi -show drun\n";
+            out << "bind = SUPER, P, pseudo,\n";
+            out << "bind = SUPER, J, togglesplit,\n";
+            out << "HYPRCONFIG\n";
+
+            // Set ownership of config files
+            out << "# Set ownership of config files\n";
+            out << "chown -R " << settings["username"].toString() << ":" << settings["username"].toString()
+            << " /home/" << settings["username"].toString() << "/.config\n";
+        }
+
+        // Install gaming meta if selected
+        if (settings["gamingMeta"].toBool()) {
+            out << "\n# Install gaming packages\n";
+            out << "pacman -S --noconfirm cachyos-gaming-meta\n";
+        }
+
+        // Enable TRIM for SSDs
+        out << "\n# Enable TRIM\n";
+        out << "systemctl enable fstrim.timer\n";
+
+        // Clean up
+        out << "\n# Clean up\n";
+        out << "rm /setup-chroot.sh\n";
+
+        scriptFile.close();
     }
+}
 
-    void showPostInstallOptions() {
-        QDialog dialog(this);
-        dialog.setWindowTitle("Installation Complete");
-        QVBoxLayout *layout = new QVBoxLayout(&dialog);
-        QLabel *label = new QLabel("Installation complete! Select post-install action:");
-        layout->addWidget(label);
+void showPostInstallOptions() {
+    QDialog dialog(this);
+    dialog.setWindowTitle("Installation Complete");
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    QLabel *label = new QLabel("Installation complete! Select post-install action:");
+    layout->addWidget(label);
 
-        QPushButton *rebootButton = new QPushButton("Reboot now");
-        QPushButton *chrootButton = new QPushButton("Chroot into installed system");
-        QPushButton *exitButton = new QPushButton("Exit without rebooting");
+    QPushButton *rebootButton = new QPushButton("Reboot now");
+    QPushButton *chrootButton = new QPushButton("Chroot into installed system");
+    QPushButton *exitButton = new QPushButton("Exit without rebooting");
 
-        layout->addWidget(rebootButton);
-        layout->addWidget(chrootButton);
-        layout->addWidget(exitButton);
+    layout->addWidget(rebootButton);
+    layout->addWidget(chrootButton);
+    layout->addWidget(exitButton);
 
-        connect(rebootButton, &QPushButton::clicked, [this, &dialog]() {
-            QProcess::execute("sudo", QStringList() << "-S" << "reboot");
-            dialog.accept();
-        });
+    connect(rebootButton, &QPushButton::clicked, [this, &dialog]() {
+        QProcess::execute("sudo", QStringList() << "-S" << "reboot");
+        dialog.accept();
+    });
 
-        connect(chrootButton, &QPushButton::clicked, [this, &dialog]() {
-            logMessage("Entering chroot...");
-            QString disk1 = settings["targetDisk"].toString() + "1";
-            QString disk2 = settings["targetDisk"].toString() + "2";
-            emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true, 0);
-            emit executeCommand("mount", {"-o", "subvol=@", disk2, "/mnt"}, true, 0);
-            emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true, 0);
-            emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true, 0);
-            emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true, 0);
-            emit executeCommand("mount", {"--rbind", "/dev/pts", "/mnt/dev/pts"}, true, 0);
-            emit executeCommand("arch-chroot", {"/mnt"}, true, 0);
-            emit executeCommand("umount", {"-l", "/mnt"}, true, 0);
-            dialog.accept();
-        });
+    connect(chrootButton, &QPushButton::clicked, [this, &dialog]() {
+        logMessage("Entering chroot...");
+        QString disk1 = settings["targetDisk"].toString() + "1";
+        QString disk2 = settings["targetDisk"].toString() + "2";
+        emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true, 0);
+        emit executeCommand("mount", {"-o", "subvol=@", disk2, "/mnt"}, true, 0);
+        emit executeCommand("mount", {"-t", "proc", "none", "/mnt/proc"}, true, 0);
+        emit executeCommand("mount", {"--rbind", "/dev", "/mnt/dev"}, true, 0);
+        emit executeCommand("mount", {"--rbind", "/sys", "/mnt/sys"}, true, 0);
+        emit executeCommand("mount", {"--rbind", "/dev/pts", "/mnt/dev/pts"}, true, 0);
+        emit executeCommand("arch-chroot", {"/mnt"}, true, 0);
+        emit executeCommand("umount", {"-l", "/mnt"}, true, 0);
+        dialog.accept();
+    });
 
-        connect(exitButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    connect(exitButton, &QPushButton::clicked, &dialog, &QDialog::accept);
 
-        dialog.exec();
-    }
+    dialog.exec();
+}
 
-    void logMessage(const QString &message) {
-        logArea->append(QString("[%1] %2").arg(QDateTime::currentDateTime().toString("hh:mm:ss"), message));
-        logArea->verticalScrollBar()->setValue(logArea->verticalScrollBar()->maximum());
-    }
+void logMessage(const QString &message) {
+    logArea->append(QString("[%1] %2").arg(QDateTime::currentDateTime().toString("hh:mm:ss"), message));
+    logArea->verticalScrollBar()->setValue(logArea->verticalScrollBar()->maximum());
+}
 
-    void logCommand(const QString &command) {
-        logMessage("Executing: " + command);
-    }
+void logCommand(const QString &command) {
+    logMessage("Executing: " + command);
+}
 
-    void logOutput(const QString &output) {
-        logArea->insertPlainText(output);
-        logArea->verticalScrollBar()->setValue(logArea->verticalScrollBar()->maximum());
-    }
+void logOutput(const QString &output) {
+    logArea->insertPlainText(output);
+    logArea->verticalScrollBar()->setValue(logArea->verticalScrollBar()->maximum());
+}
 
-    QString getDiskUuid(const QString &disk) {
-        QProcess process;
-        process.start("sudo", QStringList() << "-S" << "blkid" << "-s" << "UUID" << "-o" << "value" << disk);
-        process.write((commandRunner->password() + "\n").toUtf8());
-        process.closeWriteChannel();
-        process.waitForFinished();
-        return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
-    }
+QString getDiskUuid(const QString &disk) {
+    QProcess process;
+    process.start("sudo", QStringList() << "-S" << "blkid" << "-s" << "UUID" << "-o" << "value" << disk);
+    process.write((commandRunner->password() + "\n").toUtf8());
+    process.closeWriteChannel();
+    process.waitForFinished();
+    return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+}
 
 private:
     void initSettings() {
@@ -1157,20 +1171,20 @@ private:
     int totalSteps;
     CommandRunner *commandRunner;
     QThread *commandThread;
-};
+    };
 
-int main(int argc, char *argv[]) {
-    QApplication app(argc, argv);
+    int main(int argc, char *argv[]) {
+        QApplication app(argc, argv);
 
-    // Check if running as root
-    if (QProcess::execute("whoami", QStringList()) != 0) {
-        QMessageBox::critical(nullptr, "Error", "This application must be run as root!");
-        return 1;
+        // Check if running as root
+        if (QProcess::execute("whoami", QStringList()) != 0) {
+            QMessageBox::critical(nullptr, "Error", "This application must be run as root!");
+            return 1;
+        }
+
+        CachyOSInstaller installer;
+        installer.show();
+        return app.exec();
     }
 
-    CachyOSInstaller installer;
-    installer.show();
-    return app.exec();
-}
-
-#include "main.moc"
+    #include "main.moc"
