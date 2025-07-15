@@ -619,8 +619,6 @@ private slots:
                 emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@tmp"}, true);
                 emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@log"}, true);
                 emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@cache"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@/var/lib/portables"}, true);
-                emit executeCommand("btrfs", {"subvolume", "create", "/mnt/@/var/lib/machines"}, true);
                 emit executeCommand("umount", {"/mnt"}, true);
                 break;
 
@@ -628,6 +626,8 @@ private slots:
                 logMessage("Mounting with compression...");
                 emit executeCommand("mount", {"-o", QString("subvol=@,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt"}, true);
                 emit executeCommand("mkdir", {"-p", "/mnt/boot/efi"}, true);
+                emit executeCommand("mkdir", {"-p", "/mnt/etc"}, true);
+                emit executeCommand("touch", {"/mnt/etc/fstab"}, true);
                 emit executeCommand("mount", {disk1, "/mnt/boot/efi"}, true);
                 emit executeCommand("mkdir", {"-p", "/mnt/home"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@home,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/home"}, true);
@@ -641,10 +641,6 @@ private slots:
                 emit executeCommand("mount", {"-o", QString("subvol=@log,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/log"}, true);
                 emit executeCommand("mkdir", {"-p", "/mnt/var/cache"}, true);
                 emit executeCommand("mount", {"-o", QString("subvol=@cache,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/cache"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/portables"}, true);
-                emit executeCommand("mount", {"-o", QString("subvol=@/var/lib/portables,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/lib/portables"}, true);
-                emit executeCommand("mkdir", {"-p", "/mnt/var/lib/machines"}, true);
-                emit executeCommand("mount", {"-o", QString("subvol=@/var/lib/machines,compress=%1,compress-force=%1").arg(compression), disk2, "/mnt/var/lib/machines"}, true);
                 break;
 
             case 5: // Install base system
@@ -700,12 +696,15 @@ private slots:
                         "UUID=%1 /var/lib/machines btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/machines 0 0\n"
                     ).arg(rootUuid, compression);
 
-                    QTemporaryFile tempFile;
-                    if (tempFile.open()) {
-                        QTextStream out(&tempFile);
+                    // Write directly to the target file
+                    QFile fstabFile("/mnt/etc/fstab");
+                    if (fstabFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
+                        QTextStream out(&fstabFile);
                         out << fstabContent;
-                        tempFile.close();
-                        emit executeCommand("cat", {tempFile.fileName(), ">>", "/mnt/etc/fstab"}, true);
+                        fstabFile.close();
+                        logMessage("fstab generated successfully");
+                    } else {
+                        logMessage("ERROR: Failed to write to fstab");
                     }
                 }
                 break;
@@ -736,7 +735,7 @@ private slots:
 
             case 10: // Run chroot setup
                 logMessage("Running chroot setup...");
-                emit executeCommand("arch-chroot", {"/mnt", "/setup-chroot.sh"}, true);
+                emit executeCommand("arch-chroot", {"/mnt", "/bin/bash", "-c", "/setup-chroot.sh"}, true);
                 break;
 
             case 11: // Clean up
@@ -768,9 +767,9 @@ private slots:
     }
 
     void createChrootScript() {
-        QTemporaryFile tempFile;
-        if (tempFile.open()) {
-            QTextStream out(&tempFile);
+        QFile scriptFile("/mnt/setup-chroot.sh");
+        if (scriptFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&scriptFile);
 
             out << "#!/bin/bash\n\n";
             out << "# Basic system configuration\n";
@@ -960,10 +959,7 @@ private slots:
             out << "\n# Clean up\n";
             out << "rm /setup-chroot.sh\n";
 
-            tempFile.close();
-
-            // Copy the temporary file to /mnt/setup-chroot.sh
-            QProcess::execute("cp", {tempFile.fileName(), "/mnt/setup-chroot.sh"});
+            scriptFile.close();
         }
     }
 
