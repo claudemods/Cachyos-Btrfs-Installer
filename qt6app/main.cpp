@@ -625,7 +625,7 @@ private slots:
                 logMessage("Generating fstab...");
                 emit executeCommand("cp", {"btrfsfstabcompressed.sh", "/mnt/btrfsfstabcompressed.sh"}, true);
                 emit executeCommand("chmod", {"+x", "/mnt/btrfsfstabcompressed.sh"}, true);
-                emit executeCommand("arch-chroot", {"/mnt", "/bin/bash", "-c", "/btrfsfstabcompressed.sh"}, true);
+                emit executeCommand("arch-chroot", {"/mnt", "/bin/bash", "-c", "./btrfsfstabcompressed.sh"}, true);
                 break;
 
             case 7: // Enable selected repositories
@@ -654,7 +654,7 @@ private slots:
 
             case 10: // Run chroot setup
                 logMessage("Running chroot setup...");
-                emit executeCommand("arch-chroot", {"/mnt", "/bin/bash", "-c", "/setup-chroot.sh"}, true);
+                emit executeCommand("arch-chroot", {"/mnt", "/bin/bash", "-c", "./setup-chroot.sh"}, true);
                 break;
 
             case 11: // Clean up
