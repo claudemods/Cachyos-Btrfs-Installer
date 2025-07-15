@@ -683,28 +683,34 @@ private slots:
                 logMessage("Generating fstab...");
                 {
                     QString rootUuid = getDiskUuid(disk2);
-                    QString fstabContent = QString(
-                        "# Btrfs subvolumes (auto-added)\n"
-                        "UUID=%1 /              btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@ 0 0\n"
-                        "UUID=%1 /root          btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@root 0 0\n"
-                        "UUID=%1 /home          btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@home 0 0\n"
-                        "UUID=%1 /srv           btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@srv 0 0\n"
-                        "UUID=%1 /var/cache     btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@cache 0 0\n"
-                        "UUID=%1 /var/tmp       btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@tmp 0 0\n"
-                        "UUID=%1 /var/log       btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@log 0 0\n"
-                        "UUID=%1 /var/lib/portables btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/portables 0 0\n"
-                        "UUID=%1 /var/lib/machines btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/machines 0 0\n"
-                    ).arg(rootUuid, compression);
+                    if (rootUuid.isEmpty()) {
+                        logMessage("ERROR: Failed to get root partition UUID");
+                        break;
+                    }
 
-                    // Write directly to the target file
-                    QFile fstabFile("/mnt/etc/fstab");
-                    if (fstabFile.open(QIODevice::WriteOnly | QIODevice::Append)) {
-                        QTextStream out(&fstabFile);
-                        out << fstabContent;
-                        fstabFile.close();
+                    QTemporaryFile tempFile;
+                    if (tempFile.open()) {
+                        QString fstabContent = QString(
+                            "# Btrfs subvolumes (auto-added)\n"
+                            "UUID=%1 /              btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@ 0 0\n"
+                            "UUID=%1 /root          btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@root 0 0\n"
+                            "UUID=%1 /home          btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@home 0 0\n"
+                            "UUID=%1 /srv           btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@srv 0 0\n"
+                            "UUID=%1 /var/cache     btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@cache 0 0\n"
+                            "UUID=%1 /var/tmp       btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@tmp 0 0\n"
+                            "UUID=%1 /var/log       btrfs   rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@log 0 0\n"
+                            "UUID=%1 /var/lib/portables btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/portables 0 0\n"
+                            "UUID=%1 /var/lib/machines btrfs rw,noatime,compress=%2,discard=async,space_cache=v2,subvol=/@/var/lib/machines 0 0\n"
+                        ).arg(rootUuid, compression);
+
+                        tempFile.write(fstabContent.toUtf8());
+                        tempFile.close();
+
+                        // Copy the temporary file to the target fstab
+                        emit executeCommand("cp", {tempFile.fileName(), "/mnt/etc/fstab"}, true);
                         logMessage("fstab generated successfully");
                     } else {
-                        logMessage("ERROR: Failed to write to fstab");
+                        logMessage("ERROR: Failed to create temporary fstab file");
                     }
                 }
                 break;
@@ -843,49 +849,49 @@ private slots:
             // Install desktop environment and related packages
             out << "\n# Install desktop environment\n";
             if (settings["desktopEnv"].toString() == "KDE Plasma") {
-                out << "pacstrap /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings\n";
+                out << "pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings --disable-download-timeout\n";
                 out << "systemctl enable sddm\n";
-                out << "pacstrap /mnt firefox dolphin konsole\n";
+                out << "pacman -S --noconfirm firefox dolphin konsole --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "GNOME") {
-                out << "pacstrap /mnt gnome gnome-extra gdm\n";
+                out << "pacman -S --noconfirm gnome gnome-extra gdm --disable-download-timeout\n";
                 out << "systemctl enable gdm\n";
-                out << "pacstrap /mnt firefox gnome-terminal\n";
+                out << "pacman -S --noconfirm firefox gnome-terminal --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "XFCE") {
-                out << "pacstrap /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter\n";
+                out << "pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox mousepad xfce4-terminal\n";
+                out << "pacman -S --noconfirm firefox mousepad xfce4-terminal --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "MATE") {
-                out << "pacstrap /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter\n";
+                out << "pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox pluma mate-terminal\n";
+                out << "pacman -S --noconfirm firefox pluma mate-terminal --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "LXQt") {
-                out << "pacstrap /mnt lxqt breeze-icons sddm\n";
+                out << "pacman -S --noconfirm lxqt breeze-icons sddm --disable-download-timeout\n";
                 out << "systemctl enable sddm\n";
-                out << "pacstrap /mnt firefox qterminal\n";
+                out << "pacman -S --noconfirm firefox qterminal --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "Cinnamon") {
-                out << "pacstrap /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter\n";
+                out << "pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox xed gnome-terminal\n";
+                out << "pacman -S --noconfirm firefox xed gnome-terminal --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "Budgie") {
-                out << "pacstrap /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter\n";
+                out << "pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox gnome-text-editor gnome-terminal\n";
+                out << "pacman -S --noconfirm firefox gnome-text-editor gnome-terminal --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "Deepin") {
-                out << "pacstrap /mnt deepin deepin-extra lightdm\n";
+                out << "pacman -S --noconfirm deepin deepin-extra lightdm --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox deepin-terminal\n";
+                out << "pacman -S --noconfirm firefox deepin-terminal --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "i3") {
-                out << "pacstrap /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter\n";
+                out << "pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox alacritty\n";
+                out << "pacman -S --noconfirm firefox alacritty --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "Sway") {
-                out << "pacstrap /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter\n";
+                out << "pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox foot\n";
+                out << "pacman -S --noconfirm firefox foot --disable-download-timeout\n";
             } else if (settings["desktopEnv"].toString() == "Hyprland") {
-                out << "pacstrap /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter\n";
+                out << "pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --disable-download-timeout\n";
                 out << "systemctl enable lightdm\n";
-                out << "pacstrap /mnt firefox kitty\n";
+                out << "pacman -S --noconfirm firefox kitty --disable-download-timeout\n";
 
                 out << "# Create Hyprland config directory\n";
                 out << "mkdir -p /home/" << settings["username"].toString() << "/.config/hypr\n";
@@ -948,7 +954,7 @@ private slots:
             // Install gaming meta if selected
             if (settings["gamingMeta"].toBool()) {
                 out << "\n# Install gaming packages\n";
-                out << "pacstrap /mnt cachyos-gaming-meta\n";
+                out << "pacman -S --noconfirm cachyos-gaming-meta\n";
             }
 
             // Enable TRIM for SSDs
