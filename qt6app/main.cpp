@@ -207,6 +207,12 @@ private slots:
 
 private:
     void setupUI() {
+        // Set black background for the main window
+        QPalette palette;
+        palette.setColor(QPalette::Window, Qt::black);
+        palette.setColor(QPalette::WindowText, Qt::cyan);
+        this->setPalette(palette);
+
         // Main widgets
         QWidget *centralWidget = new QWidget(this);
         QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
@@ -231,7 +237,7 @@ private:
         progressBar->setRange(0, 100);
         progressBar->setValue(0);
         progressBar->setTextVisible(true);
-        progressBar->setStyleSheet("QProgressBar { color: cyan; }");
+        progressBar->setStyleSheet("QProgressBar { color: cyan; background-color: black; }");
         mainLayout->addWidget(progressBar);
 
         // Buttons
@@ -243,8 +249,8 @@ private:
         QPushButton *logBtn = new QPushButton("4. Log", this);
         QPushButton *exitBtn = new QPushButton("5. Exit", this);
 
-        // Set button text color to cyan
-        QString buttonStyle = "QPushButton { color: cyan; }";
+        // Set button text color to cyan and background to black
+        QString buttonStyle = "QPushButton { color: cyan; background-color: black; border: 1px solid cyan; }";
         configBtn->setStyleSheet(buttonStyle);
         mirrorsBtn->setStyleSheet(buttonStyle);
         installBtn->setStyleSheet(buttonStyle);
@@ -283,17 +289,20 @@ private:
         // Create a dialog for configuration
         QDialog dialog(this);
         dialog.setWindowTitle("Configuration Menu");
+        dialog.setStyleSheet("background-color: black; color: cyan;");
         QVBoxLayout *layout = new QVBoxLayout(&dialog);
-
-        // Set cyan color for all text in the dialog
-        dialog.setStyleSheet("color: cyan;");
 
         // Add configuration widgets
         QLineEdit *targetDiskEdit = new QLineEdit(targetDisk, &dialog);
+        targetDiskEdit->setStyleSheet("color: cyan; background-color: black;");
         QLineEdit *hostnameEdit = new QLineEdit(hostname, &dialog);
+        hostnameEdit->setStyleSheet("color: cyan; background-color: black;");
         QLineEdit *timezoneEdit = new QLineEdit(timezone, &dialog);
+        timezoneEdit->setStyleSheet("color: cyan; background-color: black;");
         QLineEdit *keymapEdit = new QLineEdit(keymap, &dialog);
+        keymapEdit->setStyleSheet("color: cyan; background-color: black;");
         QLineEdit *userNameEdit = new QLineEdit(userName, &dialog);
+        userNameEdit->setStyleSheet("color: cyan; background-color: black;");
 
         // Password configuration
         PasswordConfigDialog passwordDialog(this);
@@ -307,28 +316,33 @@ private:
         // Kernel selection
         QStringList kernels = {"Bore", "Bore-Extra", "CachyOS", "CachyOS-Extra", "LTS", "Zen"};
         QComboBox *kernelCombo = new QComboBox(&dialog);
+        kernelCombo->setStyleSheet("color: cyan; background-color: black;");
         kernelCombo->addItems(kernels);
         kernelCombo->setCurrentText(kernelType);
 
         // Initramfs selection
         QStringList initramfsOptions = {"mkinitcpio", "dracut", "booster", "mkinitcpio-pico"};
         QComboBox *initramfsCombo = new QComboBox(&dialog);
+        initramfsCombo->setStyleSheet("color: cyan; background-color: black;");
         initramfsCombo->addItems(initramfsOptions);
         initramfsCombo->setCurrentText(initramfs);
 
         // Bootloader selection
         QStringList bootloaders = {"GRUB", "systemd-boot", "rEFInd"};
         QComboBox *bootloaderCombo = new QComboBox(&dialog);
+        bootloaderCombo->setStyleSheet("color: cyan; background-color: black;");
         bootloaderCombo->addItems(bootloaders);
         bootloaderCombo->setCurrentText(bootloader);
 
         // Repository selection
         QGroupBox *repoGroup = new QGroupBox("Additional Repositories", &dialog);
+        repoGroup->setStyleSheet("color: cyan; background-color: black;");
         QVBoxLayout *repoLayout = new QVBoxLayout(repoGroup);
         QStringList repos = {"multilib", "testing", "community-testing", "cachyos", "cachyos-v3", "cachyos-testing"};
         QList<QCheckBox*> repoCheckboxes;
         for (const QString &repo : repos) {
             QCheckBox *check = new QCheckBox(repo, repoGroup);
+            check->setStyleSheet("color: cyan; background-color: black;");
             check->setChecked(repositories.contains(repo));
             repoLayout->addWidget(check);
             repoCheckboxes.append(check);
@@ -340,11 +354,13 @@ private:
             "Budgie", "Deepin", "i3", "Sway", "Hyprland", "None"
         };
         QComboBox *desktopCombo = new QComboBox(&dialog);
+        desktopCombo->setStyleSheet("color: cyan; background-color: black;");
         desktopCombo->addItems(desktops);
         desktopCombo->setCurrentText(desktopEnv);
 
         // Compression level
         QSpinBox *compressionSpin = new QSpinBox(&dialog);
+        compressionSpin->setStyleSheet("color: cyan; background-color: black;");
         compressionSpin->setRange(0, 22);
         compressionSpin->setValue(compressionLevel);
 
@@ -365,6 +381,7 @@ private:
         layout->addWidget(repoGroup);
 
         QDialogButtonBox *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+        buttons->setStyleSheet("color: cyan; background-color: black;");
         connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
         layout->addWidget(buttons);
@@ -534,6 +551,8 @@ private:
             basePkgs += " networkmanager";
         }
 
+        // Install base system
+        appendToConsole(COLOR_CYAN + "Installing base system..." + COLOR_RESET);
         executeCommand(QString("pacstrap -i /mnt %1 --noconfirm --disable-download-timeout").arg(basePkgs));
         progressBar->setValue(40);
 
@@ -596,6 +615,47 @@ private:
 
         executeCommand(QString("echo \"%1\" >> /mnt/etc/fstab").arg(fstabContent));
         progressBar->setValue(60);
+
+        // Install desktop environment if selected
+        if (desktopEnv != "None") {
+            appendToConsole(COLOR_CYAN + "Installing desktop environment: " + desktopEnv + COLOR_RESET);
+
+            if (desktopEnv == "KDE Plasma") {
+                executeCommand("pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "GNOME") {
+                executeCommand("pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "XFCE") {
+                executeCommand("pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "MATE") {
+                executeCommand("pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "LXQt") {
+                executeCommand("pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Cinnamon") {
+                executeCommand("pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Budgie") {
+                executeCommand("pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Deepin") {
+                executeCommand("pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "i3") {
+                executeCommand("pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Sway") {
+                executeCommand("pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Hyprland") {
+                executeCommand("pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            }
+        }
+        progressBar->setValue(70);
 
         // Create chroot setup script
         QString chrootScript = QString(
@@ -669,129 +729,74 @@ private:
             chrootScript += "systemctl enable NetworkManager\n\n";
         }
 
-        // Update package database
-        chrootScript += "pacman -Sy\n\n";
+        // Enable display manager if desktop installed
+        if (desktopEnv != "None") {
+            if (desktopEnv == "KDE Plasma" || desktopEnv == "LXQt") {
+                chrootScript += "systemctl enable sddm\n\n";
+            } else if (desktopEnv == "GNOME") {
+                chrootScript += "systemctl enable gdm\n\n";
+            } else {
+                chrootScript += "systemctl enable lightdm\n\n";
+            }
+        }
 
-        // Install desktop environment
-        if (desktopEnv == "KDE Plasma") {
-            chrootScript +=
-            "# KDE Plasma\n"
-            "pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout\n"
-            "systemctl enable sddm\n"
-            "pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "GNOME") {
-            chrootScript +=
-            "# GNOME\n"
-            "pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout\n"
-            "systemctl enable gdm\n"
-            "pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "XFCE") {
-            chrootScript +=
-            "# XFCE\n"
-            "pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "MATE") {
-            chrootScript +=
-            "# MATE\n"
-            "pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "LXQt") {
-            chrootScript +=
-            "# LXQt\n"
-            "pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout\n"
-            "systemctl enable sddm\n"
-            "pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "Cinnamon") {
-            chrootScript +=
-            "# Cinnamon\n"
-            "pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "Budgie") {
-            chrootScript +=
-            "# Budgie\n"
-            "pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "Deepin") {
-            chrootScript +=
-            "# Deepin\n"
-            "pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "i3") {
-            chrootScript +=
-            "# i3\n"
-            "pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "Sway") {
-            chrootScript +=
-            "# Sway\n"
-            "pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout\n";
-        } else if (desktopEnv == "Hyprland") {
-            chrootScript +=
-            "# Hyprland\n"
-            "pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout\n"
-            "systemctl enable lightdm\n"
-            "pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout\n"
-            "mkdir -p /home/%5/.config/hypr\n"
-            "cat > /home/%5/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n"
-            "# This is a basic Hyprland config\n"
-            "exec-once = waybar &\n"
-            "exec-once = swaybg -i ~/wallpaper.jpg &\n\n"
-            "monitor=,preferred,auto,1\n\n"
-            "input {\n"
-            "    kb_layout = us\n"
-            "    follow_mouse = 1\n"
-            "    touchpad {\n"
-            "        natural_scroll = yes\n"
-            "    }\n"
-            "}\n\n"
-            "general {\n"
-            "    gaps_in = 5\n"
-            "    gaps_out = 10\n"
-            "    border_size = 2\n"
-            "    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg\n"
-            "    col.inactive_border = rgba(595959aa)\n"
-            "}\n\n"
-            "decoration {\n"
-            "    rounding = 5\n"
-            "    blur = yes\n"
-            "    blur_size = 3\n"
-            "    blur_passes = 1\n"
-            "    blur_new_optimizations = on\n"
-            "}\n\n"
-            "animations {\n"
-            "    enabled = yes\n"
-            "    bezier = myBezier, 0.05, 0.9, 0.1, 1.05\n"
-            "    animation = windows, 1, 7, myBezier\n"
-            "    animation = windowsOut, 1, 7, default, popin 80%\n"
-            "    animation = border, 1, 10, default\n"
-            "    animation = fade, 1, 7, default\n"
-            "    animation = workspaces, 1, 6, default\n"
-            "}\n\n"
-            "dwindle {\n"
-            "    pseudotile = yes\n"
-            "    preserve_split = yes\n"
-            "}\n\n"
-            "master {\n"
-            "    new_is_master = true\n"
-            "}\n\n"
-            "bind = SUPER, Return, exec, kitty\n"
-            "bind = SUPER, Q, killactive,\n"
-            "bind = SUPER, M, exit,\n"
-            "bind = SUPER, V, togglefloating,\n"
-            "bind = SUPER, F, fullscreen,\n"
-            "bind = SUPER, D, exec, rofi -show drun\n"
-            "bind = SUPER, P, pseudo,\n"
-            "bind = SUPER, J, togglesplit,\n"
-            "HYPRCONFIG\n"
-            "chown -R %5:%5 /home/%5/.config\n";
+        // Hyprland specific configuration
+        if (desktopEnv == "Hyprland") {
+            chrootScript += QString(
+                "mkdir -p /home/%1/.config/hypr\n"
+                "cat > /home/%1/.config/hypr/hyprland.conf << 'HYPRCONFIG'\n"
+                "# This is a basic Hyprland config\n"
+                "exec-once = waybar &\n"
+                "exec-once = swaybg -i ~/wallpaper.jpg &\n\n"
+                "monitor=,preferred,auto,1\n\n"
+                "input {\n"
+                "    kb_layout = us\n"
+                "    follow_mouse = 1\n"
+                "    touchpad {\n"
+                "        natural_scroll = yes\n"
+                "    }\n"
+                "}\n\n"
+                "general {\n"
+                "    gaps_in = 5\n"
+                "    gaps_out = 10\n"
+                "    border_size = 2\n"
+                "    col.active_border = rgba(33ccffee) rgba(00ff99ee) 45deg\n"
+                "    col.inactive_border = rgba(595959aa)\n"
+                "}\n\n"
+                "decoration {\n"
+                "    rounding = 5\n"
+                "    blur = yes\n"
+                "    blur_size = 3\n"
+                "    blur_passes = 1\n"
+                "    blur_new_optimizations = on\n"
+                "}\n\n"
+                "animations {\n"
+                "    enabled = yes\n"
+                "    bezier = myBezier, 0.05, 0.9, 0.1, 1.05\n"
+                "    animation = windows, 1, 7, myBezier\n"
+                "    animation = windowsOut, 1, 7, default, popin 80%\n"
+                "    animation = border, 1, 10, default\n"
+                "    animation = fade, 1, 7, default\n"
+                "    animation = workspaces, 1, 6, default\n"
+                "}\n\n"
+                "dwindle {\n"
+                "    pseudotile = yes\n"
+                "    preserve_split = yes\n"
+                "}\n\n"
+                "master {\n"
+                "    new_is_master = true\n"
+                "}\n\n"
+                "bind = SUPER, Return, exec, kitty\n"
+                "bind = SUPER, Q, killactive,\n"
+                "bind = SUPER, M, exit,\n"
+                "bind = SUPER, V, togglefloating,\n"
+                "bind = SUPER, F, fullscreen,\n"
+                "bind = SUPER, D, exec, rofi -show drun\n"
+                "bind = SUPER, P, pseudo,\n"
+                "bind = SUPER, J, togglesplit,\n"
+                "HYPRCONFIG\n"
+                "chown -R %1:%1 /home/%1/.config\n\n"
+            ).arg(userName);
         }
 
         chrootScript +=
