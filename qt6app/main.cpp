@@ -292,7 +292,7 @@ private:
         if (HOSTNAME.isEmpty()) {
             bool ok;
             HOSTNAME = QInputDialog::getText(this, "Hostname",
-                                             "Enter hostname (e.g. mypc):",
+                                             "Enter hostname (e.g. cachyos):",
                                              QLineEdit::Normal,
                                              "", &ok);
             if (!ok || HOSTNAME.isEmpty()) return;
@@ -328,7 +328,7 @@ private:
         if (USER_PASSWORD.isEmpty()) {
             bool ok;
             USER_PASSWORD = QInputDialog::getText(this, "User Password",
-                                                  "Enter password (min 8 chars):",
+                                                  "Enter password (min 4 chars):",
                                                   QLineEdit::Password,
                                                   "", &ok);
             if (!ok || USER_PASSWORD.isEmpty()) return;
@@ -337,7 +337,7 @@ private:
         if (ROOT_PASSWORD.isEmpty()) {
             bool ok;
             ROOT_PASSWORD = QInputDialog::getText(this, "Root Password",
-                                                  "Enter root password (min 8 chars):",
+                                                  "Enter root password (min 4 chars):",
                                                   QLineEdit::Password,
                                                   "", &ok);
             if (!ok || ROOT_PASSWORD.isEmpty()) return;
@@ -615,7 +615,7 @@ private:
         // Base system installation
         logMessage("Installing base system");
         executeCommand("pacstrap -i /mnt " + BASE_PKGS);
-        execute_command("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
+        executeCommand("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
         progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
 
         // Generate fstab
