@@ -28,7 +28,7 @@ class InstallerWindow : public QMainWindow {
 
 public:
     InstallerWindow(QWidget *parent = nullptr) : QMainWindow(parent) {
-        setWindowTitle("CachyOS Btrfs Installer");
+        setWindowTitle("CachyOS Btrfs Installer v1.02 build 17-07-2025");
         resize(800, 600);
 
         QWidget *centralWidget = new QWidget(this);
@@ -47,7 +47,7 @@ public:
             "╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝<br>"
             "░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░<br>"
             "</span>"
-            "<span style='color: cyan;'>CachyOS Btrfs Installer v1.2 (Qt6)</span>"
+            "<span style='color: cyan;'>CachyOS Btrfs Installer v1.02 build 17-07-2025</span>"
         );
         mainLayout->addWidget(asciiArt);
 
@@ -106,6 +106,7 @@ private:
     QStringList CUSTOM_PACKAGES;
     int COMPRESSION_LEVEL = 3;
     QString sudoPassword;
+    bool passwordVerified = false;
 
     QFile logFile;
 
@@ -125,22 +126,59 @@ private:
         QApplication::processEvents();
     }
 
-    QString executeCommand(const QString &cmd, bool useSudo = true) {
-        QProcess process;
-        QString fullCmd = cmd;
+    bool verifySudoPassword() {
+        if (passwordVerified) return true;
 
-        if (useSudo && !sudoPassword.isEmpty()) {
-            fullCmd = QString("echo '%1' | sudo -S %2").arg(sudoPassword, cmd);
+        bool ok;
+        sudoPassword = QInputDialog::getText(this, "Sudo Password",
+                                             "Enter your sudo password:",
+                                             QLineEdit::Password,
+                                             "", &ok);
+        if (!ok || sudoPassword.isEmpty()) {
+            return false;
         }
 
-        logMessage("[EXEC] " + fullCmd);
+        // Verify the password works
+        QProcess process;
+        process.start("sudo", QStringList() << "-S" << "true");
+        process.write(sudoPassword.toUtf8() + "\n");
+        process.closeWriteChannel();
+        process.waitForFinished();
 
-        process.start("bash", QStringList() << "-c" << fullCmd);
+        if (process.exitCode() != 0) {
+            QMessageBox::warning(this, "Error", "Incorrect sudo password");
+            return false;
+        }
+
+        passwordVerified = true;
+        return true;
+    }
+
+    QString executeCommand(const QString &cmd, bool useSudo = true) {
+        QProcess process;
+
+        if (useSudo) {
+            if (!verifySudoPassword()) {
+                return "";
+            }
+
+            // Split command into parts for sudo
+            QStringList parts = cmd.split(' ', Qt::SkipEmptyParts);
+            QString program = parts.takeFirst();
+            process.start("sudo", QStringList() << "-S" << program << parts);
+            process.write(sudoPassword.toUtf8() + "\n");
+            process.closeWriteChannel();
+        } else {
+            process.start("bash", QStringList() << "-c" << cmd);
+        }
+
+        logMessage("[EXEC] " + cmd);
+
         process.waitForFinished(-1);
 
         if (process.exitCode() != 0) {
             QString errorMsg = QString("Error executing: %1\nExit code: %2\nError: %3")
-            .arg(fullCmd)
+            .arg(cmd)
             .arg(process.exitCode())
             .arg(QString(process.readAllStandardError()));
             logMessage(errorMsg);
@@ -214,24 +252,16 @@ private:
         }
     }
 
-    bool getSudoPassword() {
-        bool ok;
-        sudoPassword = QInputDialog::getText(this, "Sudo Password",
-                                             "Enter your sudo password:",
-                                             QLineEdit::Password,
-                                             "", &ok);
-        return ok && !sudoPassword.isEmpty();
-    }
-
     void configureInstallation() {
-        if (!getSudoPassword()) {
-            QMessageBox::warning(this, "Warning", "Sudo password is required to continue");
-            return;
-        }
-
         loadConfigFile();
 
         if (TARGET_DISK.isEmpty()) {
+            // Ask for sudo password before showing disks
+            if (!verifySudoPassword()) {
+                QMessageBox::warning(this, "Warning", "Sudo password is required to continue");
+                return;
+            }
+
             QStringList disks;
             QString output = executeCommand("lsblk -d -o NAME,SIZE -n");
             QStringList lines = output.split('\n');
@@ -462,7 +492,7 @@ private:
     }
 
     void performInstallation() {
-        if (!getSudoPassword()) {
+        if (!verifySudoPassword()) {
             QMessageBox::warning(this, "Warning", "Sudo password is required to continue");
             return;
         }
@@ -585,6 +615,7 @@ private:
         // Base system installation
         logMessage("Installing base system");
         executeCommand("pacstrap -i /mnt " + BASE_PKGS);
+        execute_command("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
         progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
 
         // Generate fstab
