@@ -124,7 +124,6 @@ void perform_installation() {
     execute_command("btrfs subvolume create /mnt/@cache");
     execute_command("btrfs subvolume create /mnt/@tmp");
     execute_command("btrfs subvolume create /mnt/@log");
-    execute_command("tar -xvzf pacman-23-06-2025.tar.gz -C /mnt/etc");
     execute_command("umount /mnt");
 
     // Remount with compression
@@ -156,6 +155,7 @@ void perform_installation() {
     // Base packages - EXACTLY AS IN YOUR SCRIPT
     string BASE_PKGS = "base " + KERNEL_PKG + " linux-firmware sudo dosfstools arch-install-scripts btrfs-progs nano";
     
+    
     if (BOOTLOADER == "GRUB") {
         BASE_PKGS += " grub efibootmgr dosfstools cachyos-grub-theme";
     } else if (BOOTLOADER == "systemd-boot") {
@@ -180,6 +180,7 @@ void perform_installation() {
 
     // ORIGINAL PACSTRAP COMMAND - UNCHANGED
     execute_command("pacstrap -i /mnt " + BASE_PKGS + " --noconfirm --disable-download-timeout");
+    execute_command("tar -xvzf pacman-23-06-2025.tar.gz -C /mnt/etc");
 
     // Generate fstab
     string ROOT_UUID = run_command("blkid -s UUID -o value " + root_part);
