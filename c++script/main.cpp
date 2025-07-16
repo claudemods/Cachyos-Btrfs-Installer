@@ -6,11 +6,15 @@
 #include <sys/stat.h>
 #include <fstream>
 #include <sstream>
+#include <ctime>
+#include <algorithm>
 
 using namespace std;
 
 #define RED "\033[38;2;255;0;0m"
 #define CYAN "\033[38;2;0;255;255m"
+#define GREEN "\033[38;2;0;255;0m"
+#define YELLOW "\033[38;2;255;255;0m"
 #define NC "\033[0m"
 
 // Config variables
@@ -27,6 +31,7 @@ string INITRAMFS;
 string BOOTLOADER;
 string BOOT_FS_TYPE = "fat32";
 vector<string> REPOS;
+vector<string> CUSTOM_PACKAGES;
 int COMPRESSION_LEVEL;
 
 void show_ascii() {
@@ -38,11 +43,23 @@ void show_ascii() {
 ██║░░██╗██║░░░░░██╔══██║██║░░░██║██║░░██║██╔══╝░░██║╚██╔╝██║██║░░██║██║░░██║░╚═══██╗
 ╚█████╔╝███████╗██║░░██║╚██████╔╝██████╔╝███████╗██║░╚═╝░██║╚█████╔╝██████╔╝██████╔╝
 ░╚════╝░╚══════╝╚═╝░░░░░░╚═════╝░╚═════╝░╚══════╝╚═╝░░░░░╚═╝░╚════╝░╚═════╝░╚═════╝░)" << NC << endl;
-    cout << CYAN << "CachyOS Btrfs Installer v1.0" << NC << endl << endl;
+    cout << CYAN << "CachyOS Btrfs Installer v1.1" << NC << endl << endl;
+}
+
+string get_current_time() {
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    char buffer[80];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", ltm);
+    return string(buffer);
+}
+
+void log_message(const string& message) {
+    cout << YELLOW << "[" << get_current_time() << "] " << message << NC << endl;
 }
 
 void execute_command(const string& cmd) {
-    cout << CYAN << "[EXEC] " << cmd << NC << endl;
+    log_message("[EXEC] " + cmd);
     system(cmd.c_str());
 }
 
@@ -61,27 +78,112 @@ string run_command(const string& cmd) {
     return result;
 }
 
-void configure_installation() {
-    TARGET_DISK = run_command("dialog --title \"Target Disk\" --inputbox \"Enter target disk (e.g. /dev/nvme0n1):\" 10 50 2>&1 >/dev/tty");
-    
-    // Boot filesystem selection
-    string fs_choice = run_command("dialog --title \"Boot Filesystem\" --menu \"Select filesystem:\" 15 40 2 \"fat32\" \"FAT32 (Recommended)\" \"ext4\" \"EXT4\" 2>&1 >/dev/tty");
-    BOOT_FS_TYPE = (fs_choice == "fat32") ? "fat32" : "ext4";
+bool file_exists(const string& filename) {
+    struct stat buffer;
+    return (stat(filename.c_str(), &buffer) == 0);
+}
 
-    HOSTNAME = run_command("dialog --title \"Hostname\" --inputbox \"Enter hostname:\" 10 50 2>&1 >/dev/tty");
-    TIMEZONE = run_command("dialog --title \"Timezone\" --inputbox \"Enter timezone:\" 10 50 2>&1 >/dev/tty");
-    KEYMAP = run_command("dialog --title \"Keymap\" --inputbox \"Enter keymap:\" 10 50 2>&1 >/dev/tty");
-    USER_NAME = run_command("dialog --title \"Username\" --inputbox \"Enter username:\" 10 50 2>&1 >/dev/tty");
-    USER_PASSWORD = run_command("dialog --title \"User Password\" --passwordbox \"Enter password:\" 10 50 2>&1 >/dev/tty");
-    ROOT_PASSWORD = run_command("dialog --title \"Root Password\" --passwordbox \"Enter root password:\" 10 50 2>&1 >/dev/tty");
+vector<string> read_file_lines(const string& filename) {
+    vector<string> lines;
+    ifstream file(filename);
+    if (file.is_open()) {
+        string line;
+        while (getline(file, line)) {
+            if (!line.empty() && line[0] != '#') {
+                lines.push_back(line);
+            }
+        }
+        file.close();
+    }
+    return lines;
+}
+
+void load_config_file() {
+    if (file_exists("installer.conf")) {
+        log_message("Loading configuration from installer.conf");
+        vector<string> lines = read_file_lines("installer.conf");
+        
+        for (const string& line : lines) {
+            size_t pos = line.find('=');
+            if (pos != string::npos) {
+                string key = line.substr(0, pos);
+                string value = line.substr(pos + 1);
+                
+                if (key == "TARGET_DISK") TARGET_DISK = value;
+                else if (key == "HOSTNAME") HOSTNAME = value;
+                else if (key == "TIMEZONE") TIMEZONE = value;
+                else if (key == "KEYMAP") KEYMAP = value;
+                else if (key == "USER_NAME") USER_NAME = value;
+                else if (key == "USER_PASSWORD") USER_PASSWORD = value;
+                else if (key == "ROOT_PASSWORD") ROOT_PASSWORD = value;
+                else if (key == "DESKTOP_ENV") DESKTOP_ENV = value;
+                else if (key == "KERNEL_TYPE") KERNEL_TYPE = value;
+                else if (key == "INITRAMFS") INITRAMFS = value;
+                else if (key == "BOOTLOADER") BOOTLOADER = value;
+                else if (key == "BOOT_FS_TYPE") BOOT_FS_TYPE = value;
+                else if (key == "COMPRESSION_LEVEL") COMPRESSION_LEVEL = stoi(value);
+            }
+        }
+    }
+}
+
+void load_packages_file() {
+    if (file_exists("packages.txt")) {
+        log_message("Loading additional packages from packages.txt");
+        CUSTOM_PACKAGES = read_file_lines("packages.txt");
+    }
+}
+
+void configure_installation() {
+    load_config_file();
     
-    KERNEL_TYPE = run_command("dialog --title \"Kernel\" --menu \"Select kernel:\" 15 40 6 \"Bore\" \"CachyOS Bore\" \"Bore-Extra\" \"Bore with extras\" \"CachyOS\" \"Standard\" \"CachyOS-Extra\" \"With extras\" \"LTS\" \"Long-term\" \"Zen\" \"Zen kernel\" 2>&1 >/dev/tty");
-    INITRAMFS = run_command("dialog --title \"Initramfs\" --menu \"Select initramfs:\" 15 40 4 \"mkinitcpio\" \"Default\" \"dracut\" \"Alternative\" \"booster\" \"Fast\" \"mkinitcpio-pico\" \"Minimal\" 2>&1 >/dev/tty");
-    BOOTLOADER = run_command("dialog --title \"Bootloader\" --menu \"Select bootloader:\" 15 40 3 \"GRUB\" \"GRUB\" \"systemd-boot\" \"Minimal\" \"rEFInd\" \"Graphical\" 2>&1 >/dev/tty");
-    DESKTOP_ENV = run_command("dialog --title \"Desktop\" --menu \"Select desktop:\" 20 50 12 \"KDE Plasma\" \"KDE\" \"GNOME\" \"GNOME\" \"XFCE\" \"XFCE\" \"MATE\" \"MATE\" \"LXQt\" \"LXQt\" \"Cinnamon\" \"Cinnamon\" \"Budgie\" \"Budgie\" \"Deepin\" \"Deepin\" \"i3\" \"i3\" \"Sway\" \"Sway\" \"Hyprland\" \"Hyprland\" \"None\" \"None\" 2>&1 >/dev/tty");
+    if (TARGET_DISK.empty()) {
+        TARGET_DISK = run_command("dialog --title \"Target Disk\" --inputbox \"Enter target disk (e.g. /dev/nvme0n1):\" 10 50 2>&1 >/dev/tty");
+    }
     
-    string comp_level = run_command("dialog --title \"Compression\" --inputbox \"Enter BTRFS compression level (1-22):\" 10 50 2>&1 >/dev/tty");
-    COMPRESSION_LEVEL = stoi(comp_level);
+    if (BOOT_FS_TYPE.empty()) {
+        string fs_choice = run_command("dialog --title \"Boot Filesystem\" --menu \"Select filesystem:\" 15 40 2 \"fat32\" \"FAT32 (Recommended)\" \"ext4\" \"EXT4\" 2>&1 >/dev/tty");
+        BOOT_FS_TYPE = (fs_choice == "fat32") ? "fat32" : "ext4";
+    }
+
+    if (HOSTNAME.empty()) {
+        HOSTNAME = run_command("dialog --title \"Hostname\" --inputbox \"Enter hostname:\" 10 50 2>&1 >/dev/tty");
+    }
+    if (TIMEZONE.empty()) {
+        TIMEZONE = run_command("dialog --title \"Timezone\" --inputbox \"Enter timezone:\" 10 50 2>&1 >/dev/tty");
+    }
+    if (KEYMAP.empty()) {
+        KEYMAP = run_command("dialog --title \"Keymap\" --inputbox \"Enter keymap:\" 10 50 2>&1 >/dev/tty");
+    }
+    if (USER_NAME.empty()) {
+        USER_NAME = run_command("dialog --title \"Username\" --inputbox \"Enter username:\" 10 50 2>&1 >/dev/tty");
+    }
+    if (USER_PASSWORD.empty()) {
+        USER_PASSWORD = run_command("dialog --title \"User Password\" --passwordbox \"Enter password:\" 10 50 2>&1 >/dev/tty");
+    }
+    if (ROOT_PASSWORD.empty()) {
+        ROOT_PASSWORD = run_command("dialog --title \"Root Password\" --passwordbox \"Enter root password:\" 10 50 2>&1 >/dev/tty");
+    }
+    
+    if (KERNEL_TYPE.empty()) {
+        KERNEL_TYPE = run_command("dialog --title \"Kernel\" --menu \"Select kernel:\" 15 40 6 \"Bore\" \"CachyOS Bore\" \"Bore-Extra\" \"Bore with extras\" \"CachyOS\" \"Standard\" \"CachyOS-Extra\" \"With extras\" \"LTS\" \"Long-term\" \"Zen\" \"Zen kernel\" 2>&1 >/dev/tty");
+    }
+    if (INITRAMFS.empty()) {
+        INITRAMFS = run_command("dialog --title \"Initramfs\" --menu \"Select initramfs:\" 15 40 4 \"mkinitcpio\" \"Default\" \"dracut\" \"Alternative\" \"booster\" \"Fast\" \"mkinitcpio-pico\" \"Minimal\" 2>&1 >/dev/tty");
+    }
+    if (BOOTLOADER.empty()) {
+        BOOTLOADER = run_command("dialog --title \"Bootloader\" --menu \"Select bootloader:\" 15 40 3 \"GRUB\" \"GRUB\" \"systemd-boot\" \"Minimal\" \"rEFInd\" \"Graphical\" 2>&1 >/dev/tty");
+    }
+    if (DESKTOP_ENV.empty()) {
+        DESKTOP_ENV = run_command("dialog --title \"Desktop\" --menu \"Select desktop:\" 20 50 12 \"KDE Plasma\" \"KDE\" \"GNOME\" \"GNOME\" \"XFCE\" \"XFCE\" \"MATE\" \"MATE\" \"LXQt\" \"LXQt\" \"Cinnamon\" \"Cinnamon\" \"Budgie\" \"Budgie\" \"Deepin\" \"Deepin\" \"i3\" \"i3\" \"Sway\" \"Sway\" \"Hyprland\" \"Hyprland\" \"None\" \"None\" 2>&1 >/dev/tty");
+    }
+    
+    if (COMPRESSION_LEVEL == 0) {
+        string comp_level = run_command("dialog --title \"Compression\" --inputbox \"Enter BTRFS compression level (1-22):\" 10 50 2>&1 >/dev/tty");
+        COMPRESSION_LEVEL = stoi(comp_level);
+    }
+
+    load_packages_file();
 }
 
 void perform_installation() {
@@ -97,17 +199,23 @@ void perform_installation() {
         exit(1);
     }
 
+    // Wipe disk first
+    log_message("Wiping disk with wipefs");
+    execute_command("wipefs -a " + TARGET_DISK);
+
     // Partition names
     string boot_part = TARGET_DISK + (TARGET_DISK.find("nvme") != string::npos ? "p1" : "1");
     string root_part = TARGET_DISK + (TARGET_DISK.find("nvme") != string::npos ? "p2" : "2");
 
     // Partitioning
+    log_message("Partitioning disk");
     execute_command("parted -s " + TARGET_DISK + " mklabel gpt");
     execute_command("parted -s " + TARGET_DISK + " mkpart primary 1MiB 513MiB");
     execute_command("parted -s " + TARGET_DISK + " set 1 esp on");
     execute_command("parted -s " + TARGET_DISK + " mkpart primary 513MiB 100%");
 
     // Formatting
+    log_message("Formatting partitions");
     if (BOOT_FS_TYPE == "fat32") {
         execute_command("mkfs.vfat -F32 " + boot_part);
     } else {
@@ -116,6 +224,7 @@ void perform_installation() {
     execute_command("mkfs.btrfs -f " + root_part);
 
     // Mounting
+    log_message("Setting up Btrfs subvolumes");
     execute_command("mount " + root_part + " /mnt");
     execute_command("btrfs subvolume create /mnt/@");
     execute_command("btrfs subvolume create /mnt/@home");
@@ -127,6 +236,7 @@ void perform_installation() {
     execute_command("umount /mnt");
 
     // Remount with compression
+    log_message("Mounting with compression");
     execute_command("mount -o subvol=@,compress=zstd:" + to_string(COMPRESSION_LEVEL) + ",compress-force=zstd:" + to_string(COMPRESSION_LEVEL) + " " + root_part + " /mnt");
     execute_command("mkdir -p /mnt/boot/efi");
     execute_command("mount " + boot_part + " /mnt/boot/efi");
@@ -152,9 +262,16 @@ void perform_installation() {
     else if (KERNEL_TYPE == "LTS") KERNEL_PKG = "linux-lts";
     else if (KERNEL_TYPE == "Zen") KERNEL_PKG = "linux-zen";
 
-    // Base packages - EXACTLY AS IN YOUR SCRIPT
+    // Base packages
     string BASE_PKGS = "base " + KERNEL_PKG + " linux-firmware sudo dosfstools arch-install-scripts btrfs-progs nano";
     
+    // Add custom packages if any
+    if (!CUSTOM_PACKAGES.empty()) {
+        BASE_PKGS += " ";
+        for (const string& pkg : CUSTOM_PACKAGES) {
+            BASE_PKGS += pkg + " ";
+        }
+    }
     
     if (BOOTLOADER == "GRUB") {
         BASE_PKGS += " grub efibootmgr dosfstools cachyos-grub-theme";
@@ -178,11 +295,13 @@ void perform_installation() {
         BASE_PKGS += " networkmanager";
     }
 
-    // ORIGINAL PACSTRAP COMMAND - UNCHANGED
+    // Base system installation
+    log_message("Installing base system");
     execute_command("pacstrap -i /mnt " + BASE_PKGS + " --noconfirm --disable-download-timeout");
     execute_command("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
 
     // Generate fstab
+    log_message("Generating fstab");
     string ROOT_UUID = run_command("blkid -s UUID -o value " + root_part);
     ofstream fstab("/mnt/etc/fstab", ios::app);
     fstab << "\n# Btrfs subvolumes\n"
@@ -196,6 +315,7 @@ void perform_installation() {
     fstab.close();
 
     // Chroot setup
+    log_message("Preparing chroot environment");
     string chroot_script = R"(#!/bin/bash
 # System config
 echo ")" + HOSTNAME + R"(" > /etc/hostname
@@ -426,17 +546,28 @@ chown -R )" + USER_NAME + ":" + USER_NAME + " /home/" + USER_NAME + R"(/.config
     chroot_script += R"(
 # Clean up
 rm /setup-chroot.sh
+if [ -f /setup-chroot-gaming ]; then
+    rm /setup-chroot-gaming
+fi
 )";
 
     ofstream chroot_file("/mnt/setup-chroot.sh");
     chroot_file << chroot_script;
     chroot_file.close();
 
+    // Check if gaming packages should be installed
+    if (run_command("dialog --title \"Gaming Packages\" --yesno \"Install cachyos-gaming-meta package?\" 7 40") == "0") {
+        ofstream gaming_flag("/mnt/setup-chroot-gaming");
+        gaming_flag.close();
+    }
+
     execute_command("chmod +x /mnt/setup-chroot.sh");
+    log_message("Running chroot configuration");
     execute_command("arch-chroot /mnt /setup-chroot.sh");
 
     execute_command("umount -R /mnt");
-    cout << CYAN << "Installation complete!" << NC << endl;
+    cout << GREEN << "\n[" << get_current_time() << "] Installation complete!" << NC << endl;
+    cout << YELLOW << "You can now reboot into your new CachyOS installation." << NC << endl;
 }
 
 int main() {
