@@ -473,7 +473,7 @@ systemctl enable sddm
 systemctl enable NetworkManager
 systemctl start NetworkManager
 echo 'blacklist ntfs3' | tee /etc/modprobe.d/disable-ntfs3.conf
-pacman -S --noconfirm --needed --disable-download-timeout firefox dolphin konsole pulseaudio pavucontrol
+pacman -S --noconfirm --needed --disable-download-timeout firefox kate ksystemlog partitionmanager dolphin konsole pulseaudio pavucontrol
 plymouth-set-default-theme -R cachyos-bootanimation
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm --needed --disable-download-timeout cachyos-gaming-meta
