@@ -140,7 +140,7 @@ perform_installation() {
     # Add bootloader packages
     case "$BOOTLOADER" in
         "GRUB") 
-            BASE_PKGS="$BASE_PKGS grub efibootmgr dosfstools cachyos-grub-theme"
+            BASE_PKGS="$BASE_PKGS grub sudo efibootmgr dosfstools cachyos-grub-theme"
             ;;
         "systemd-boot") BASE_PKGS="$BASE_PKGS efibootmgr" ;;
         "rEFInd") BASE_PKGS="$BASE_PKGS refind" ;;
