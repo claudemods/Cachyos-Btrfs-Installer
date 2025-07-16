@@ -153,7 +153,7 @@ void perform_installation() {
     else if (KERNEL_TYPE == "Zen") KERNEL_PKG = "linux-zen";
 
     // Base packages - EXACTLY AS IN YOUR SCRIPT
-    string BASE_PKGS = "base " + KERNEL_PKG + " linux-firmware btrfs-progs nano";
+    string BASE_PKGS = "base " + KERNEL_PKG + " linux-firmware sudo dosfstools arch-install-scripts btrfs-progs nano";
     
     if (BOOTLOADER == "GRUB") {
         BASE_PKGS += " grub efibootmgr dosfstools cachyos-grub-theme";
