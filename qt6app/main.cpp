@@ -616,47 +616,6 @@ private:
         executeCommand(QString("echo \"%1\" >> /mnt/etc/fstab").arg(fstabContent));
         progressBar->setValue(60);
 
-        // Install desktop environment if selected
-        if (desktopEnv != "None") {
-            appendToConsole(COLOR_CYAN + "Installing desktop environment: " + desktopEnv + COLOR_RESET);
-
-            if (desktopEnv == "KDE Plasma") {
-                executeCommand("pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "GNOME") {
-                executeCommand("pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "XFCE") {
-                executeCommand("pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "MATE") {
-                executeCommand("pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "LXQt") {
-                executeCommand("pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "Cinnamon") {
-                executeCommand("pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "Budgie") {
-                executeCommand("pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "Deepin") {
-                executeCommand("pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "i3") {
-                executeCommand("pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "Sway") {
-                executeCommand("pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            } else if (desktopEnv == "Hyprland") {
-                executeCommand("pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeCommand("pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
-            }
-        }
-        progressBar->setValue(70);
-
         // Create chroot setup script
         QString chrootScript = QString(
             "#!/bin/bash\n\n"
@@ -809,10 +768,50 @@ private:
         executeCommand(QString("echo \"%1\" > /mnt/setup-chroot.sh").arg(chrootScript));
         executeCommand("chmod +x /mnt/setup-chroot.sh");
         executeCommand("arch-chroot /mnt /setup-chroot.sh");
+        executeCommand("umount -l /mnt");
         progressBar->setValue(90);
+         // Install desktop environment if selected
+        if (desktopEnv != "None") {
+            appendToConsole(COLOR_CYAN + "Installing desktop environment: " + desktopEnv + COLOR_RESET);
 
+            if (desktopEnv == "KDE Plasma") {
+                executeCommand("pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "GNOME") {
+                executeCommand("pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "XFCE") {
+                executeCommand("pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "MATE") {
+                executeCommand("pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "LXQt") {
+                executeCommand("pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Cinnamon") {
+                executeCommand("pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Budgie") {
+                executeCommand("pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Deepin") {
+                executeCommand("pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "i3") {
+                executeCommand("pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Sway") {
+                executeCommand("pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            } else if (desktopEnv == "Hyprland") {
+                executeCommand("pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
+                executeCommand("pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+            }
+        }
+        progressBar->setValue(99);
         // Unmount
-        executeCommand("umount -R /mnt");
+        
         progressBar->setValue(100);
         appendToConsole(COLOR_CYAN + "Installation complete!" + COLOR_RESET);
 
