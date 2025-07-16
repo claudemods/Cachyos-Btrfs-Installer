@@ -124,7 +124,7 @@ void perform_installation() {
     execute_command("btrfs subvolume create /mnt/@cache");
     execute_command("btrfs subvolume create /mnt/@tmp");
     execute_command("btrfs subvolume create /mnt/@log");
-    execute_command("unzip pacman.zip -d /mnt/etc");
+    execute_command("tar -xvzf pacman-23-06-2025.tar.gz -C /mnt/etc");
     execute_command("umount /mnt");
 
     // Remount with compression
