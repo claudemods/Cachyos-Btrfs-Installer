@@ -298,6 +298,7 @@ void perform_installation() {
     // Base system installation
     log_message("Installing base system");
     execute_command("pacstrap -i /mnt " + BASE_PKGS + " --noconfirm --disable-download-timeout");
+    execute_command("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
 
     // Generate fstab
     log_message("Generating fstab");
