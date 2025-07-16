@@ -168,6 +168,7 @@ perform_installation() {
     fi
 
     execute_command pacstrap -i /mnt $BASE_PKGS --noconfirm --disable-download-timeout
+    execute_command tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc
 
     # Add selected repositories
     for repo in "${REPOS[@]}"; do
