@@ -299,6 +299,7 @@ void perform_installation() {
     log_message("Installing base system");
     execute_command("pacstrap -i /mnt " + BASE_PKGS + " --noconfirm --disable-download-timeout");
     execute_command("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
+    execute_command("cp -r locale.conf /mnt/etc");
 
     // Generate fstab
     log_message("Generating fstab");
@@ -392,6 +393,7 @@ REFIND
 
     if (DESKTOP_ENV == "None") {
         chroot_script += "systemctl enable NetworkManager\n";
+        chroot_script += "systemctl start NetworkManager\n";
     }
 
     chroot_script += R"(
@@ -400,9 +402,13 @@ REFIND
 
     if (DESKTOP_ENV == "KDE Plasma") {
         chroot_script += R"(
-pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings
+pacman -S --noconfirm -- plasma-desktop qt6-base qt6-wayland wayland kde-applications-meta sddm cachyos-kde-settings ntfs-3g gtk3
 systemctl enable sddm
+systemctl enable NetworkManager
+systemctl start NetworkManager
+echo 'blacklist ntfs3' | tee /etc/modprobe.d/disable-ntfs3.conf
 pacman -S --noconfirm firefox dolphin konsole pulseaudio pavucontrol
+plymouth-set-default-theme -R cachyos-bootanimation
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
 fi
@@ -411,6 +417,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm gnome gnome-extra gdm
 systemctl enable gdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox gnome-terminal pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -420,6 +428,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox mousepad xfce4-terminal pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -429,6 +439,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox pluma mate-terminal pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -438,6 +450,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm lxqt breeze-icons sddm
 systemctl enable sddm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox qterminal pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -447,6 +461,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox xed gnome-terminal pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -456,6 +472,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -465,6 +483,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm deepin deepin-extra lightdm
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox deepin-terminal pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -474,6 +494,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox alacritty pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -483,6 +505,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox foot pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
@@ -492,6 +516,8 @@ fi
         chroot_script += R"(
 pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter
 systemctl enable lightdm
+systemctl enable NetworkManager
+systemctl start NetworkManager
 pacman -S --noconfirm firefox kitty pulseaudio pavucontrol
 if [ -f /setup-chroot-gaming ]; then
     pacman -S --noconfirm cachyos-gaming-meta
