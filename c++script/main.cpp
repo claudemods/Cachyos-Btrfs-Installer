@@ -180,7 +180,7 @@ void perform_installation() {
 
     // ORIGINAL PACSTRAP COMMAND - UNCHANGED
     execute_command("pacstrap -i /mnt " + BASE_PKGS + " --noconfirm --disable-download-timeout");
-    execute_command("tar -xvzf pacman-23-06-2025.tar.gz -C /mnt/etc");
+    execute_command("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
 
     // Generate fstab
     string ROOT_UUID = run_command("blkid -s UUID -o value " + root_part);
