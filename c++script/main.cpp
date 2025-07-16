@@ -275,106 +275,106 @@ REFIND
     }
 
     chroot_script += R"(
-# Desktop environments - EXACTLY AS IN YOUR SCRIPT
+# Desktop environments
 )";
 
     if (DESKTOP_ENV == "KDE Plasma") {
         chroot_script += R"(
-pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout
+pacman -S --noconfirm plasma-meta kde-applications-meta sddm cachyos-kde-settings
 systemctl enable sddm
-pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox dolphin konsole pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "GNOME") {
         chroot_script += R"(
-pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout
+pacman -S --noconfirm gnome gnome-extra gdm
 systemctl enable gdm
-pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox gnome-terminal pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "XFCE") {
         chroot_script += R"(
-pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+pacman -S --noconfirm xfce4 xfce4-goodies lightdm lightdm-gtk-greeter
 systemctl enable lightdm
-pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox mousepad xfce4-terminal pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "MATE") {
         chroot_script += R"(
-pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+pacman -S --noconfirm mate mate-extra mate-media lightdm lightdm-gtk-greeter
 systemctl enable lightdm
-pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox pluma mate-terminal pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "LXQt") {
         chroot_script += R"(
-pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout
+pacman -S --noconfirm lxqt breeze-icons sddm
 systemctl enable sddm
-pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox qterminal pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "Cinnamon") {
         chroot_script += R"(
-pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+pacman -S --noconfirm cinnamon cinnamon-translations lightdm lightdm-gtk-greeter
 systemctl enable lightdm
-pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox xed gnome-terminal pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "Budgie") {
         chroot_script += R"(
-pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+pacman -S --noconfirm budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter
 systemctl enable lightdm
-pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "Deepin") {
         chroot_script += R"(
-pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout
+pacman -S --noconfirm deepin deepin-extra lightdm
 systemctl enable lightdm
-pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox deepin-terminal pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "i3") {
         chroot_script += R"(
-pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+pacman -S --noconfirm i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter
 systemctl enable lightdm
-pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox alacritty pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "Sway") {
         chroot_script += R"(
-pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+pacman -S --noconfirm sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter
 systemctl enable lightdm
-pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox foot pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 )";
     } else if (DESKTOP_ENV == "Hyprland") {
         chroot_script += R"(
-pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout
+pacman -S --noconfirm hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter
 systemctl enable lightdm
-pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout
-if dialog --title "Gaming Packages" --yesno "Install cachyos-gaming-meta package?" 7 40; then
-    pacstrap -i /mnt cachyos-gaming-meta --noconfirm --disable-download-timeout
+pacman -S --noconfirm firefox kitty pulseaudio pavucontrol
+if [ -f /setup-chroot-gaming ]; then
+    pacman -S --noconfirm cachyos-gaming-meta
 fi
 
 # Hyprland config
