@@ -46,7 +46,7 @@ public:
         layout->addWidget(logText);
 
         QHBoxLayout *buttonLayout = new QHBoxLayout();
-        
+
         QPushButton *clearButton = new QPushButton("Clear Log", this);
         clearButton->setStyleSheet("color: cyan;");
         connect(clearButton, &QPushButton::clicked, this, &LogViewer::clearLog);
@@ -145,7 +145,7 @@ private slots:
         if (process) {
             QString output = process->readAllStandardOutput();
             QString error = process->readAllStandardError();
-            
+
             if (!output.isEmpty()) {
                 appendToConsole(output);
             }
@@ -533,7 +533,7 @@ private:
 
         // Install base system
         appendToConsole(COLOR_CYAN + "Installing base system..." + COLOR_RESET);
-        executeAsyncCommand(QString("pacstrap -i /mnt %1 --noconfirm --disable-download-timeout").arg(basePkgs));
+        executeAsyncCommand(QString("pacman --noconfirm --disable-download-timeout %1 ").arg(basePkgs));
         updateProgress(40);
 
         // Add selected repositories
@@ -756,38 +756,38 @@ private:
             appendToConsole(COLOR_CYAN + "Installing desktop environment: " + desktopEnv + COLOR_RESET);
 
             if (desktopEnv == "KDE Plasma") {
-                executeAsyncCommand("pacstrap -i /mnt plasma-meta kde-applications-meta sddm cachyos-kde-settings --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox dolphin konsole pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout plasma-meta kde-applications-meta sddm cachyos-kde-settings");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox dolphin konsole pulseaudio pavucontrol");
             } else if (desktopEnv == "GNOME") {
-                executeAsyncCommand("pacstrap -i /mnt gnome gnome-extra gdm --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout gnome gnome-extra gdm");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox gnome-terminal pulseaudio pavucontrol");
             } else if (desktopEnv == "XFCE") {
-                executeAsyncCommand("pacstrap -i /mnt xfce4 xfce4-goodies lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox mousepad xfce4-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout xfce4 xfce4-goodies lightdm lightdm-gtk-greeter");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox mousepad xfce4-terminal pulseaudio pavucontrol");
             } else if (desktopEnv == "MATE") {
-                executeAsyncCommand("pacstrap -i /mnt mate mate-extra mate-media lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox pluma mate-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout mate mate-extra mate-media lightdm lightdm-gtk-greeter");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox pluma mate-terminal pulseaudio pavucontrol");
             } else if (desktopEnv == "LXQt") {
-                executeAsyncCommand("pacstrap -i /mnt lxqt breeze-icons sddm --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox qterminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout lxqt breeze-icons sddm");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox qterminal pulseaudio pavucontrol");
             } else if (desktopEnv == "Cinnamon") {
-                executeAsyncCommand("pacstrap -i /mnt cinnamon cinnamon-translations lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox xed gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout cinnamon cinnamon-translations lightdm lightdm-gtk-greeter");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox xed gnome-terminal pulseaudio pavucontrol");
             } else if (desktopEnv == "Budgie") {
-                executeAsyncCommand("pacstrap -i /mnt budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout budgie-desktop budgie-extras gnome-control-center gnome-terminal lightdm lightdm-gtk-greeter");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox gnome-text-editor gnome-terminal pulseaudio pavucontrol");
             } else if (desktopEnv == "Deepin") {
-                executeAsyncCommand("pacstrap -i /mnt deepin deepin-extra lightdm --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox deepin-terminal pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout deepin deepin-extra lightdm");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox deepin-terminal pulseaudio pavucontrol");
             } else if (desktopEnv == "i3") {
-                executeAsyncCommand("pacstrap -i /mnt i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox alacritty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout i3-wm i3status i3lock dmenu lightdm lightdm-gtk-greeter");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox alacritty pulseaudio pavucontrol");
             } else if (desktopEnv == "Sway") {
-                executeAsyncCommand("pacstrap -i /mnt sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox foot pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout sway swaylock swayidle waybar wofi lightdm lightdm-gtk-greeter");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox foot pulseaudio pavucontrol");
             } else if (desktopEnv == "Hyprland") {
-                executeAsyncCommand("pacstrap -i /mnt hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter --noconfirm --disable-download-timeout");
-                executeAsyncCommand("pacstrap -i /mnt firefox kitty pulseaudio pavucontrol --noconfirm --disable-download-timeout");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout hyprland waybar rofi wofi kitty swaybg swaylock-effects wl-clipboard lightdm lightdm-gtk-greeter");
+                executeAsyncCommand("pacman --noconfirm --disable-download-timeout firefox kitty pulseaudio pavucontrol");
             }
         }
         updateProgress(90);
@@ -822,9 +822,9 @@ private:
         QProcess *process = new QProcess(this);
         connect(process, &QProcess::readyReadStandardOutput, this, &CachyOSInstaller::commandOutputReady);
         connect(process, &QProcess::readyReadStandardError, this, &CachyOSInstaller::commandOutputReady);
-        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), 
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                 this, &CachyOSInstaller::commandFinished);
-        
+
         appendToConsole(COLOR_CYAN + "Executing: " + command + COLOR_RESET);
         process->start("bash", {"-c", command});
     }
