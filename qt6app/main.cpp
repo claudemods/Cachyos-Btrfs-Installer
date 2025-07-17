@@ -154,8 +154,10 @@ private:
         return true;
     }
 
-    QString executeCommand(const QString &cmd, bool useSudo = true) {
+    QString executeCommand(const QString &cmd, bool useSudo = true, bool sensitive = false) {
         QProcess process;
+        QString logCmd = sensitive ? "[REDACTED]" : cmd;
+        logMessage("[EXEC] " + logCmd);
 
         if (useSudo) {
             if (!verifySudoPassword()) {
@@ -172,15 +174,13 @@ private:
             process.start("bash", QStringList() << "-c" << cmd);
         }
 
-        logMessage("[EXEC] " + cmd);
-
         process.waitForFinished(-1);
 
         if (process.exitCode() != 0) {
             QString errorMsg = QString("Error executing: %1\nExit code: %2\nError: %3")
-            .arg(cmd)
-            .arg(process.exitCode())
-            .arg(QString(process.readAllStandardError()));
+                .arg(logCmd)
+                .arg(process.exitCode())
+                .arg(QString(process.readAllStandardError()));
             logMessage(errorMsg);
             QMessageBox::critical(this, "Error", errorMsg);
             return "";
@@ -189,7 +189,10 @@ private:
         return QString(process.readAllStandardOutput()).trimmed();
     }
 
-    QString runCommand(const QString &cmd) {
+    QString runCommand(const QString &cmd, bool sensitive = false) {
+        QString logCmd = sensitive ? "[REDACTED]" : cmd;
+        logMessage("[RUN] " + logCmd);
+        
         QProcess process;
         process.start("bash", QStringList() << "-c" << cmd);
         process.waitForFinished(-1);
@@ -435,7 +438,7 @@ private:
 
         loadPackagesFile();
 
-        // Show summary
+        // Show summary (without passwords)
         QString summary = QString(
             "Installation Summary:\n"
             "----------------------\n"
@@ -464,8 +467,8 @@ private:
             BOOTLOADER,
             DESKTOP_ENV,
             QString::number(COMPRESSION_LEVEL),
-              LOCALE_LANG,
-              CUSTOM_PACKAGES.join(", ")
+            LOCALE_LANG,
+            CUSTOM_PACKAGES.join(", ")
         );
 
         QMessageBox::information(this, "Configuration Summary", summary);
