@@ -129,39 +129,36 @@ private:
         QApplication::processEvents();
     }
 
-    QString executeCommand(const QString &cmd, bool useSudo = true, bool sensitive = false) {
-        QProcess process;
-        QString logCmd = sensitive ? "[REDACTED]" : cmd;
-        logMessage("[EXEC] " + logCmd);
+   QString executeCommand(const QString &cmd, bool useSudo = true, bool sensitive = false) {
+    QProcess process;
+    QString logCmd = sensitive ? "[REDACTED]" : cmd;
+    logMessage("[EXEC] " + logCmd);
 
-        if (useSudo) {
-            // Set up environment to prevent password echo
-            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-            env.insert("SUDO_ASKPASS", "/bin/true");
-            process.setProcessEnvironment(env);
+    // Configure process to prevent any interaction
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.setInputChannelMode(QProcess::InputChannelMode::ManagedInputChannel);
 
-            // Start sudo with -A to use askpass (which we disabled)
-            process.start("sudo", QStringList() << "-A" << "sh" << "-c" << cmd);
-
-            // Write password to stdin
-            process.write((sudoPassword + "\n").toUtf8());
-            process.closeWriteChannel();
-        } else {
-            process.start("bash", QStringList() << "-c" << cmd);
-        }
-
-        process.waitForFinished(-1);
-
-        if (process.exitCode() != 0) {
-            QString errorMsg = QString("Command failed: %1\nError: %2")
-            .arg(logCmd)
-            .arg(QString(process.readAllStandardError()));
-            logMessage(errorMsg);
-            return "";
-        }
-
-        return QString(process.readAllStandardOutput()).trimmed();
+    if (useSudo) {
+        // Start sudo normally - will prompt user in terminal if needed
+        process.start("sudo", QStringList() << "sh" << "-c" << cmd);
+    } else {
+        process.start("bash", QStringList() << "-c" << cmd);
     }
+
+    // Wait for completion with timeout
+    if (!process.waitForFinished(-1)) {
+        logMessage("Command timed out: " + logCmd);
+        return "";
+    }
+
+    if (process.exitCode() != 0) {
+        QString error = QString(process.readAllStandardError());
+        logMessage("Command failed: " + logCmd + "\nError: " + error);
+        return "";
+    }
+
+    return QString(process.readAllStandardOutput()).trimmed();
+} 
 
     bool fileExists(const QString &filename) {
         return QFile::exists(filename);
