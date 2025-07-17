@@ -135,7 +135,15 @@ private:
         logMessage("[EXEC] " + logCmd);
 
         if (useSudo) {
-            process.start("sudo", QStringList() << "-S" << "sh" << "-c" << cmd);
+            // Set up environment to prevent password echo
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            env.insert("SUDO_ASKPASS", "/bin/true");
+            process.setProcessEnvironment(env);
+
+            // Start sudo with -A to use askpass (which we disabled)
+            process.start("sudo", QStringList() << "-A" << "sh" << "-c" << cmd);
+
+            // Write password to stdin
             process.write((sudoPassword + "\n").toUtf8());
             process.closeWriteChannel();
         } else {
@@ -145,25 +153,13 @@ private:
         process.waitForFinished(-1);
 
         if (process.exitCode() != 0) {
-            QString errorMsg = QString("Error executing: %1\nExit code: %2\nError: %3")
+            QString errorMsg = QString("Command failed: %1\nError: %2")
             .arg(logCmd)
-            .arg(process.exitCode())
             .arg(QString(process.readAllStandardError()));
             logMessage(errorMsg);
-            QMessageBox::critical(this, "Error", errorMsg);
             return "";
         }
 
-        return QString(process.readAllStandardOutput()).trimmed();
-    }
-
-    QString runCommand(const QString &cmd, bool sensitive = false) {
-        QString logCmd = sensitive ? "[REDACTED]" : cmd;
-        logMessage("[RUN] " + logCmd);
-
-        QProcess process;
-        process.start("bash", QStringList() << "-c" << cmd);
-        process.waitForFinished(-1);
         return QString(process.readAllStandardOutput()).trimmed();
     }
 
