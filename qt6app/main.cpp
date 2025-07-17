@@ -73,12 +73,19 @@ public:
 
         setCentralWidget(centralWidget);
 
-        // Connect signals
         connect(configureButton, &QPushButton::clicked, this, &InstallerWindow::configureInstallation);
         connect(installButton, &QPushButton::clicked, this, &InstallerWindow::performInstallation);
 
-        // Initialize variables
         initVariables();
+
+        bool ok;
+        sudoPassword = QInputDialog::getText(this, "Sudo Password",
+                                             "Enter your sudo password:",
+                                             QLineEdit::Password,
+                                             "", &ok);
+        if (!ok || sudoPassword.isEmpty()) {
+            QTimer::singleShot(0, this, &QMainWindow::close);
+        }
     }
 
 private:
@@ -87,8 +94,8 @@ private:
     QProgressBar *progressBar;
     QPushButton *configureButton;
     QPushButton *installButton;
+    QString sudoPassword;
 
-    // Config variables
     QString TARGET_DISK;
     QString HOSTNAME;
     QString TIMEZONE;
@@ -108,7 +115,6 @@ private:
     QFile logFile;
 
     void initVariables() {
-        // Open log file
         logFile.setFileName("installation_log.txt");
         if (!logFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
             logMessage("Could not open log file for writing");
@@ -129,19 +135,7 @@ private:
         logMessage("[EXEC] " + logCmd);
 
         if (useSudo) {
-            bool ok;
-            QString sudoPassword = QInputDialog::getText(this, "Sudo Password",
-                                                         "Enter your sudo password:",
-                                                         QLineEdit::Password,
-                                                         "", &ok);
-            if (!ok || sudoPassword.isEmpty()) {
-                return "";
-            }
-
-            // Split command into parts for sudo
-            QStringList parts = cmd.split(' ', Qt::SkipEmptyParts);
-            QString program = parts.takeFirst();
-            process.start("sudo", QStringList() << "-S" << program << parts);
+            process.start("sudo", QStringList() << "-S" << "sh" << "-c" << cmd);
             process.write((sudoPassword + "\n").toUtf8());
             process.closeWriteChannel();
         } else {
