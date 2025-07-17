@@ -22,6 +22,8 @@
 #include <QTimer>
 #include <QThread>
 #include <QLabel>
+#include <QFutureWatcher>
+#include <QtConcurrent>
 
 class InstallerWindow : public QMainWindow {
     Q_OBJECT
@@ -74,7 +76,7 @@ public:
         setCentralWidget(centralWidget);
 
         connect(configureButton, &QPushButton::clicked, this, &InstallerWindow::configureInstallation);
-        connect(installButton, &QPushButton::clicked, this, &InstallerWindow::performInstallation);
+        connect(installButton, &QPushButton::clicked, this, &InstallerWindow::startInstallation);
 
         initVariables();
 
@@ -113,6 +115,7 @@ private:
     QStringList CUSTOM_PACKAGES;
     int COMPRESSION_LEVEL = 3;
     QFile logFile;
+    QFutureWatcher<void> installationWatcher;
 
     void initVariables() {
         logFile.setFileName("installation_log.txt");
@@ -129,36 +132,33 @@ private:
         QApplication::processEvents();
     }
 
-   QString executeCommand(const QString &cmd, bool useSudo = true, bool sensitive = false) {
-    QProcess process;
-    QString logCmd = sensitive ? "[REDACTED]" : cmd;
-    logMessage("[EXEC] " + logCmd);
+    QString executeCommand(const QString &cmd, bool useSudo = true, bool sensitive = false) {
+        QProcess process;
+        QString logCmd = sensitive ? "[REDACTED]" : cmd;
+        logMessage("[EXEC] " + logCmd);
 
-    // Configure process to prevent any interaction
-    process.setProcessChannelMode(QProcess::MergedChannels);
-    process.setInputChannelMode(QProcess::InputChannelMode::ManagedInputChannel);
+        process.setProcessChannelMode(QProcess::MergedChannels);
+        process.setInputChannelMode(QProcess::InputChannelMode::ManagedInputChannel);
 
-    if (useSudo) {
-        // Start sudo normally - will prompt user in terminal if needed
-        process.start("sudo", QStringList() << "sh" << "-c" << cmd);
-    } else {
-        process.start("bash", QStringList() << "-c" << cmd);
+        if (useSudo) {
+            process.start("sudo", QStringList() << "sh" << "-c" << cmd);
+        } else {
+            process.start("bash", QStringList() << "-c" << cmd);
+        }
+
+        // Process events periodically while waiting
+        while (!process.waitForFinished(100)) {
+            QApplication::processEvents();
+        }
+
+        if (process.exitCode() != 0) {
+            QString error = QString(process.readAllStandardError());
+            logMessage("Command failed: " + logCmd + "\nError: " + error);
+            return "";
+        }
+
+        return QString(process.readAllStandardOutput()).trimmed();
     }
-
-    // Wait for completion with timeout
-    if (!process.waitForFinished(-1)) {
-        logMessage("Command timed out: " + logCmd);
-        return "";
-    }
-
-    if (process.exitCode() != 0) {
-        QString error = QString(process.readAllStandardError());
-        logMessage("Command failed: " + logCmd + "\nError: " + error);
-        return "";
-    }
-
-    return QString(process.readAllStandardOutput()).trimmed();
-} 
 
     bool fileExists(const QString &filename) {
         return QFile::exists(filename);
@@ -393,7 +393,6 @@ private:
 
         loadPackagesFile();
 
-        // Show summary (without passwords)
         QString summary = QString(
             "Installation Summary:\n"
             "----------------------\n"
@@ -422,8 +421,8 @@ private:
             BOOTLOADER,
             DESKTOP_ENV,
             QString::number(COMPRESSION_LEVEL),
-              LOCALE_LANG,
-              CUSTOM_PACKAGES.join(", ")
+            LOCALE_LANG,
+            CUSTOM_PACKAGES.join(", ")
         );
 
         QMessageBox::information(this, "Configuration Summary", summary);
@@ -449,18 +448,40 @@ private:
         executeCommand(QString("echo '%1' > %2").arg(content, localeConfPath));
     }
 
+    void startInstallation() {
+        // Disable buttons during installation
+        configureButton->setEnabled(false);
+        installButton->setEnabled(false);
+
+        // Run installation in background thread
+        QFuture<void> future = QtConcurrent::run([this]() {
+            performInstallation();
+        });
+
+        // Connect watcher to re-enable UI when done
+        installationWatcher.setFuture(future);
+        connect(&installationWatcher, &QFutureWatcher<void>::finished, this, [this]() {
+            configureButton->setEnabled(true);
+            installButton->setEnabled(true);
+        });
+    }
+
     void performInstallation() {
         logMessage("Starting installation process");
 
         // Check if running as root
         if (executeCommand("id -u") != "0") {
-            QMessageBox::critical(this, "Error", "Must be run as root!");
+            QMetaObject::invokeMethod(this, [this]() {
+                QMessageBox::critical(this, "Error", "Must be run as root!");
+            }, Qt::QueuedConnection);
             return;
         }
 
         // Check UEFI
         if (!fileExists("/sys/firmware/efi")) {
-            QMessageBox::critical(this, "Error", "UEFI required!");
+            QMetaObject::invokeMethod(this, [this]() {
+                QMessageBox::critical(this, "Error", "UEFI required!");
+            }, Qt::QueuedConnection);
             return;
         }
 
@@ -470,7 +491,7 @@ private:
         // Wipe disk
         logMessage("Wiping disk");
         executeCommand("wipefs -a " + TARGET_DISK);
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Partition names
         QString boot_part = TARGET_DISK + (TARGET_DISK.contains("nvme") ? "p1" : "1");
@@ -482,7 +503,7 @@ private:
         executeCommand("parted -s " + TARGET_DISK + " mkpart primary 1MiB 513MiB");
         executeCommand("parted -s " + TARGET_DISK + " set 1 esp on");
         executeCommand("parted -s " + TARGET_DISK + " mkpart primary 513MiB 100%");
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Formatting
         logMessage("Formatting partitions");
@@ -492,7 +513,7 @@ private:
             executeCommand("mkfs.ext4 " + boot_part);
         }
         executeCommand("mkfs.btrfs -f " + root_part);
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Mounting and subvolumes
         logMessage("Setting up Btrfs subvolumes");
@@ -505,7 +526,7 @@ private:
         executeCommand("btrfs subvolume create /mnt/@tmp");
         executeCommand("btrfs subvolume create /mnt/@log");
         executeCommand("umount /mnt");
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Remount with compression
         logMessage("Mounting with compression");
@@ -524,7 +545,7 @@ private:
         executeCommand("mount -o subvol=@tmp,compress=zstd:" + QString::number(COMPRESSION_LEVEL) + ",compress-force=zstd:" + QString::number(COMPRESSION_LEVEL) + " " + root_part + " /mnt/tmp");
         executeCommand("mount -o subvol=@cache,compress=zstd:" + QString::number(COMPRESSION_LEVEL) + ",compress-force=zstd:" + QString::number(COMPRESSION_LEVEL) + " " + root_part + " /mnt/var/cache");
         executeCommand("mount -o subvol=@log,compress=zstd:" + QString::number(COMPRESSION_LEVEL) + ",compress-force=zstd:" + QString::number(COMPRESSION_LEVEL) + " " + root_part + " /mnt/var/log");
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Kernel package
         QString KERNEL_PKG;
@@ -569,7 +590,7 @@ private:
         logMessage("Installing base system");
         executeCommand("pacstrap -i /mnt " + BASE_PKGS);
         executeCommand("tar -xvzf pacman-16-07-2025.tar.gz -C /mnt/etc");
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Generate fstab
         logMessage("Generating fstab");
@@ -586,12 +607,12 @@ private:
         ).arg(ROOT_UUID, QString::number(COMPRESSION_LEVEL));
 
         executeCommand(QString("echo '%1' >> /mnt/etc/fstab").arg(fstabContent));
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Setup locale
         logMessage("Configuring locale");
         setupLocaleConf();
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Chroot setup
         logMessage("Preparing chroot environment");
@@ -852,13 +873,17 @@ private:
         );
 
         // Check if gaming packages should be installed
-        QMessageBox::StandardButton reply = QMessageBox::question(
-            this, "Gaming Packages",
-            "Install cachyos-gaming-meta package?",
-            QMessageBox::Yes|QMessageBox::No
-        );
+        bool installGaming = false;
+        QMetaObject::invokeMethod(this, [this, &installGaming]() {
+            QMessageBox::StandardButton reply = QMessageBox::question(
+                this, "Gaming Packages",
+                "Install cachyos-gaming-meta package?",
+                QMessageBox::Yes|QMessageBox::No
+            );
+            installGaming = (reply == QMessageBox::Yes);
+        }, Qt::BlockingQueuedConnection);
 
-        if (reply == QMessageBox::Yes) {
+        if (installGaming) {
             executeCommand("touch /mnt/setup-chroot-gaming");
         }
 
@@ -866,15 +891,17 @@ private:
         executeCommand("chmod +x /mnt/setup-chroot.sh");
         logMessage("Running chroot configuration");
         executeCommand("arch-chroot /mnt /setup-chroot.sh");
-        progressBar->setValue(++current_step * 100 / TOTAL_STEPS);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, ++current_step * 100 / TOTAL_STEPS));
 
         // Final cleanup
         logMessage("Finalizing installation");
         executeCommand("umount -R /mnt");
-        progressBar->setValue(100);
+        QMetaObject::invokeMethod(progressBar, "setValue", Q_ARG(int, 100));
 
         logMessage("Installation complete!");
-        QMessageBox::information(this, "Success", "Installation complete!\nYou can now reboot into your new CachyOS installation.");
+        QMetaObject::invokeMethod(this, [this]() {
+            QMessageBox::information(this, "Success", "Installation complete!\nYou can now reboot into your new CachyOS installation.");
+        }, Qt::QueuedConnection);
     }
 };
 
