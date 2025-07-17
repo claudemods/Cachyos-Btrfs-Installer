@@ -105,9 +105,6 @@ private:
     QStringList REPOS;
     QStringList CUSTOM_PACKAGES;
     int COMPRESSION_LEVEL = 3;
-    QString sudoPassword;
-    bool passwordVerified = false;
-
     QFile logFile;
 
     void initVariables() {
@@ -126,41 +123,18 @@ private:
         QApplication::processEvents();
     }
 
-    bool verifySudoPassword() {
-        if (passwordVerified) return true;
-
-        bool ok;
-        sudoPassword = QInputDialog::getText(this, "Sudo Password",
-                                             "Enter your sudo password:",
-                                             QLineEdit::Password,
-                                             "", &ok);
-        if (!ok || sudoPassword.isEmpty()) {
-            return false;
-        }
-
-        // Verify the password works
-        QProcess process;
-        process.start("sudo", QStringList() << "-S" << "true");
-        process.write(sudoPassword.toUtf8() + "\n");
-        process.closeWriteChannel();
-        process.waitForFinished();
-
-        if (process.exitCode() != 0) {
-            QMessageBox::warning(this, "Error", "Incorrect sudo password");
-            return false;
-        }
-
-        passwordVerified = true;
-        return true;
-    }
-
     QString executeCommand(const QString &cmd, bool useSudo = true, bool sensitive = false) {
         QProcess process;
         QString logCmd = sensitive ? "[REDACTED]" : cmd;
         logMessage("[EXEC] " + logCmd);
 
         if (useSudo) {
-            if (!verifySudoPassword()) {
+            bool ok;
+            QString sudoPassword = QInputDialog::getText(this, "Sudo Password",
+                                                         "Enter your sudo password:",
+                                                         QLineEdit::Password,
+                                                         "", &ok);
+            if (!ok || sudoPassword.isEmpty()) {
                 return "";
             }
 
@@ -168,7 +142,7 @@ private:
             QStringList parts = cmd.split(' ', Qt::SkipEmptyParts);
             QString program = parts.takeFirst();
             process.start("sudo", QStringList() << "-S" << program << parts);
-            process.write(sudoPassword.toUtf8() + "\n");
+            process.write((sudoPassword + "\n").toUtf8());
             process.closeWriteChannel();
         } else {
             process.start("bash", QStringList() << "-c" << cmd);
@@ -178,9 +152,9 @@ private:
 
         if (process.exitCode() != 0) {
             QString errorMsg = QString("Error executing: %1\nExit code: %2\nError: %3")
-                .arg(logCmd)
-                .arg(process.exitCode())
-                .arg(QString(process.readAllStandardError()));
+            .arg(logCmd)
+            .arg(process.exitCode())
+            .arg(QString(process.readAllStandardError()));
             logMessage(errorMsg);
             QMessageBox::critical(this, "Error", errorMsg);
             return "";
@@ -192,7 +166,7 @@ private:
     QString runCommand(const QString &cmd, bool sensitive = false) {
         QString logCmd = sensitive ? "[REDACTED]" : cmd;
         logMessage("[RUN] " + logCmd);
-        
+
         QProcess process;
         process.start("bash", QStringList() << "-c" << cmd);
         process.waitForFinished(-1);
@@ -259,12 +233,6 @@ private:
         loadConfigFile();
 
         if (TARGET_DISK.isEmpty()) {
-            // Ask for sudo password before showing disks
-            if (!verifySudoPassword()) {
-                QMessageBox::warning(this, "Warning", "Sudo password is required to continue");
-                return;
-            }
-
             QStringList disks;
             QString output = executeCommand("lsblk -d -o NAME,SIZE -n");
             QStringList lines = output.split('\n');
@@ -467,8 +435,8 @@ private:
             BOOTLOADER,
             DESKTOP_ENV,
             QString::number(COMPRESSION_LEVEL),
-            LOCALE_LANG,
-            CUSTOM_PACKAGES.join(", ")
+              LOCALE_LANG,
+              CUSTOM_PACKAGES.join(", ")
         );
 
         QMessageBox::information(this, "Configuration Summary", summary);
@@ -495,11 +463,6 @@ private:
     }
 
     void performInstallation() {
-        if (!verifySudoPassword()) {
-            QMessageBox::warning(this, "Warning", "Sudo password is required to continue");
-            return;
-        }
-
         logMessage("Starting installation process");
 
         // Check if running as root
